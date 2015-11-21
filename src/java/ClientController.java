@@ -121,6 +121,8 @@ public class ClientController implements Serializable {
     public void download() {
 
         /*Replicate file with other servers if necessary*/
+        
+
         /*Response*/
         FacesContext fc = FacesContext.getCurrentInstance();
         ExternalContext ec = fc.getExternalContext();
