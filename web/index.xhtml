@@ -4,17 +4,18 @@
       xmlns:h="http://xmlns.jcp.org/jsf/html"
       xmlns:c="http://xmlns.jcp.org/jsf/core">
     <h:head>
-        <title>Facelet Title</title>
+        <title>CSC611M</title>
     </h:head>
     <h:body>
-        <h:dataTable value="#{clientController.files}" var="file">
-            <h:column>
-                <h:outputLink value="index.xhtml" >
-                    <h:outputText value="#{file}" />
-                    <c:param name="file" value="#{file}" />
-                </h:outputLink>
-            </h:column>
-        </h:dataTable>
+        <h:form>
+            <h:dataTable value="#{clientController.files}" var="file">
+                <h:column>
+                    <h:commandLink action="#{clientController.download}" value="#{file}">
+                        <c:setPropertyActionListener target="#{clientController.fileName}" value="#{file}" />
+                    </h:commandLink>
+                </h:column>
+            </h:dataTable>
+        </h:form>
         <br />
         <h:form enctype="multipart/form-data">
             <h:inputFile value="#{clientController.file}" />
