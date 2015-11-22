@@ -38,6 +38,9 @@ import javax.servlet.http.Part;
 @SessionScoped
 public class ClientController implements Serializable {
 
+    /**
+     * File name to be downloaded
+     */
     private String fileName;
     private Map<Integer, ServerSocket> servers;
     private Map<String, Set<Integer>> files;
