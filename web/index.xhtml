@@ -53,9 +53,9 @@
 
                                 <div class="btn btn-group" role="group">
                                     <span class="btn btn-default btn-file">
-                                        Select a file<h:inputFile class="form-control" label="File upload" required="true" requiredMessage="Specify the file to be uploaded." value="#{clientController.file}" />
+                                        Select a file<h:inputFile class="form-control" label="File upload" required="true" requiredMessage="Specify the file to be uploaded." value="#{gatewayServer.file}" />
                                     </span>
-                                    <h:commandButton class="btn btn-default btn-primary" action="#{clientController.upload}" value="Upload" />
+                                    <h:commandButton class="btn btn-default btn-primary" action="#{gatewayServer.upload}" value="Upload" />
                                 </div>
 
                                 <p>The list below shows all the files in the service.</p>
@@ -64,9 +64,9 @@
 
                             <!-- List group -->
                             <ul class="list-group" >
-                                <c:forEach items="#{clientController.files}" var="file">
+                                <c:forEach items="#{gatewayServer.files}" var="file">
                                     <li class="list-group-item">
-                                        <h:commandLink action="#{clientController.download(file)}" value="#{file}" />
+                                        <h:commandLink action="#{gatewayServer.download(file)}" value="#{file}" />
                                     </li>
                                 </c:forEach>
                             </ul>

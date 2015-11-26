@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
+import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
@@ -23,17 +24,18 @@ import java.util.stream.Collectors;
  *
  * @author Darren
  */
-public class FileServer implements Runnable {
+public class FileServer extends Thread {
+
 
     private final ServerSocket server;
     private Path directory;
     private boolean isAlive;
 
-    public FileServer(ServerSocket server, String port) {
-        this.server = server;
+    public FileServer(int port) throws IOException {
+        this.server = new ServerSocket(port);
         this.isAlive = false;
         try {
-            directory = Paths.get("C:\\CSC611M", port.toString());
+            directory = Paths.get("C:\\CSC611M", Integer.toString(port));
 
             /*Create directory to serve as the file repository of the file server*/
             if (Files.notExists(directory)) {
@@ -52,6 +54,7 @@ public class FileServer implements Runnable {
                 isAlive = true;
                 try (Socket accept = server.accept();
                         InputStream is = accept.getInputStream();
+                        
                         BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
                     switch (br.readLine()) {
                         case Protocol.FILE_LIST:
@@ -71,18 +74,26 @@ public class FileServer implements Runnable {
                                     InputStream fileSelected = Files.newInputStream(directory.resolve(br.readLine()))) {
                                 Protocol.transferBytes(fileSelected, os);
                             }
+                            break;
+                        case Protocol.SHUTDOWN:
+                            try (OutputStream os = accept.getOutputStream(); PrintWriter pw = new PrintWriter(os)) {
+                                pw.println(Protocol.OK);
+                                pw.flush();
+                            }
+                            server.close();
+                            break;
                     }
                 }
             }
         } catch (SocketException ex) {
 
         } catch (IOException ex) {
-            Logger.getLogger(ClientController.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
         }
         isAlive = false;
     }
 
-    void stop() throws IOException {
+    void stopServer() throws IOException {
         server.close();
     }
 
@@ -90,7 +101,32 @@ public class FileServer implements Runnable {
         return server.isClosed();
     }
     
-    public boolean isAlive(){
+    public boolean isServerAlive(){
         return isAlive;
+    }
+    
+    
+    private static void create(int port) {
+        try {
+            FileServer fileServer = new FileServer(port);
+            fileServer.start();
+        } catch (IOException ex) {
+            Logger.getLogger(FileServer.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+    
+    public static void main(String[] args) {
+        if (args.length != 1){
+            System.err.println("Please input the ID of this FileServer (e.g. 0).");
+            System.exit(1);
+        }
+        
+        try {
+            int port = Integer.parseInt(args[0]);
+            FileServer.create(port);
+        }catch(NumberFormatException e){
+            System.err.println("Please input a valid ID for this FileServer (e.g. 0).");
+            System.exit(2);
+        }
     }
 }

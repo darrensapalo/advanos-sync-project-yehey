@@ -32,7 +32,7 @@ import javax.servlet.http.Part;
  */
 @ManagedBean
 @ApplicationScoped
-public class ClientController implements Serializable {
+public class GatewayServer implements Serializable {
 
     private Map<Integer, FileServer> servers;
     private Map<String, Set<Integer>> files;
@@ -52,7 +52,7 @@ public class ClientController implements Serializable {
 
         /*Start all servers*/
         for (int i = 0; i < NUM_SERV; i++) {
-            Integer port = 1099 + i;
+            Integer port = Protocol.START_PORT + i;
             startServer(port);
 
             /*Gateway: Receive file list from server*/
@@ -66,7 +66,7 @@ public class ClientController implements Serializable {
                             .forEach(f -> addFile(f, port));
                 }
             } catch (ClassNotFoundException | IOException ex) {
-                Logger.getLogger(ClientController.class.getName()).log(Level.SEVERE, null, ex);
+                Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
             }
         }
     }
@@ -78,9 +78,9 @@ public class ClientController implements Serializable {
     public void cleanup() {
         servers.values().forEach((fileServer) -> {
             try {
-                fileServer.stop();
+                fileServer.stopServer();
             } catch (IOException ex) {
-                Logger.getLogger(ClientController.class.getName()).log(Level.SEVERE, null, ex);
+                Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
             }
         });
         pool.shutdown();
@@ -105,7 +105,7 @@ public class ClientController implements Serializable {
             Protocol.transferBytes(is, ec.getResponseOutputStream());
             fc.responseComplete();
         } catch (IOException ex) {
-            Logger.getLogger(ClientController.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
 
@@ -127,9 +127,7 @@ public class ClientController implements Serializable {
 
     public void startServer(Integer port) {
         try {
-
-            ServerSocket server = new ServerSocket(port);
-            FileServer fileServer = new FileServer(server, Integer.toString(port));
+            FileServer fileServer = new FileServer(port);
 
             /*Spawn threads to start file servers*/
             pool.execute(fileServer);
@@ -137,15 +135,15 @@ public class ClientController implements Serializable {
             servers.put(port, fileServer);
             System.err.println("File Server " + port + " was started.");
         } catch (IOException ex) {
-            Logger.getLogger(ClientController.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
 
     public void stop(Integer port) {
         try {
-            servers.get(port).stop();
+            servers.get(port).stopServer();
         } catch (IOException ex) {
-            Logger.getLogger(ClientController.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
 
@@ -171,7 +169,7 @@ public class ClientController implements Serializable {
                 pw.flush();
                 Protocol.transferBytes(is, os);
             } catch (IOException ex) {
-                Logger.getLogger(ClientController.class.getName()).log(Level.SEVERE, null, ex);
+                Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
             }
 
             /*Exit*/
@@ -217,7 +215,7 @@ public class ClientController implements Serializable {
     public boolean isServerAlive(Integer port){
         try {
             FileServer fileServer = servers.get(port);
-            return fileServer.isAlive();
+            return fileServer.isServerAlive();
         }catch(Exception e){
             e.printStackTrace();
         }

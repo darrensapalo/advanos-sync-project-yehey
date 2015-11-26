@@ -18,6 +18,9 @@ public class Protocol {
     public static final String DOWNLOAD = "download";
     public static final String FILE_LIST = "file list";
     public static final String UPLOAD = "upload";
+    public static final String SHUTDOWN = "shutdown";
+    public static final String OK = "ok";
+    public static final int START_PORT = 1099;
     
     
     public static void transferBytes(InputStream is, OutputStream os) throws IOException {
