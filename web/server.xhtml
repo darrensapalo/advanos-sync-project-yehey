@@ -1,7 +1,8 @@
 <?xml version='1.0' encoding='UTF-8' ?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml"
-      xmlns:h="http://xmlns.jcp.org/jsf/html">
+      xmlns:h="http://xmlns.jcp.org/jsf/html"
+      xmlns:c="http://xmlns.jcp.org/jsp/jstl/core">
     <h:head>
         <title>CSC611M</title>
 
@@ -38,30 +39,57 @@
             </div>
         </nav>
 
+        <div class="starter-template">
         <div class="container">
 
-            <div class="starter-template">
-                <h1>File Servers</h1>
-                <h:form>
-                    <h:dataTable value="#{clientController.servers.keySet()}" var="port">
-                        <h:column>
-                            <h:outputLabel class="glyphicon glyphicon-ok" rendered="#{not clientController.servers.get(port).closed}" style="color : green" />
-                            <h:outputLabel class="glyphicon glyphicon-remove" rendered="#{clientController.servers.get(port).closed}" style="color : red" />
-                        </h:column>
-                        <h:column>
-                            <h:outputLabel value="#{port}" />
-                        </h:column>
-                        <h:column>
-                            <h:commandButton action="#{clientController.start(port)}" disabled="#{not clientController.servers.get(port).closed}" value="Start" />
-                        </h:column>
-                        <h:column>
-                            <h:commandButton action="#{clientController.stop(port)}" disabled="#{clientController.servers.get(port).closed}" value="Stop" />
-                        </h:column>
-                    </h:dataTable>
-                </h:form>
+            
+            <div id="servers">
+                <h2>File Servers</h2>
+                <c:forEach var="server" items="#{clientController.servers}">
+                    <div class="panel panel-default">
+                        <!-- Default panel contents -->
+                        <div class="panel-heading">
+                            <h4>File Directory on FileServer #{server.key} 
+                                <c:choose>
+                                    <c:when test="#{clientController.isServerAlive(server.key)}">
+                                        <span class="label label-success">Online</span>
+                                    </c:when>
+                                    <c:otherwise>
+                                        <span class="label label-default">Offline</span>
+                                    </c:otherwise>
+                                </c:choose>
+
+
+                            </h4>
+
+
+                        </div>
+
+                        <!-- List group -->
+                        <ul class="list-group">
+                            <c:forEach var="file" items="#{clientController.filesOfServer(server.key)}">
+                                <li class="list-group-item">${file}</li>
+                            </c:forEach>
+
+                        </ul>
+
+                        <div class="panel-body">
+
+                            <div class="btn-group btn-group-justified" role="group" >
+                                <h:form>
+                                    <h:commandButton class="btn btn-warning" action="#{clientController.killServer(server.key)}" value="Kill server" /> &nbsp;
+                                    <h:commandButton class="btn btn-success" action="#{clientController.startServer(server.key)}" value="Start server" />
+                                </h:form>
+                            </div>
+
+                        </div>
+
+                    </div>
+                </c:forEach>
             </div>
 
         </div><!-- /.container -->
+        </div>
 
         <!-- Bootstrap core JavaScript
         ================================================== -->
