@@ -9,6 +9,7 @@ import java.io.PrintWriter;
 import java.io.Serializable;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -41,7 +42,7 @@ public class ClientController implements Serializable {
     /**
      * Number of servers
      */
-    private static final int NUM_SERV = 6;
+    private static final int NUM_SERV = 3;
 
     @PostConstruct
     public void init() {
@@ -52,7 +53,7 @@ public class ClientController implements Serializable {
         /*Start all servers*/
         for (int i = 0; i < NUM_SERV; i++) {
             Integer port = 1099 + i;
-            createServer(port);
+            startServer(port);
 
             /*Gateway: Receive file list from server*/
             try (Socket connection = new Socket("localhost", port);
@@ -86,8 +87,8 @@ public class ClientController implements Serializable {
     }
 
     public void download(String fileName) {
-        /*Replicate file with other servers if necessary*/
-        /*Response*/
+        /* Replicate file with other servers if necessary */
+ /*Response*/
         FacesContext fc = FacesContext.getCurrentInstance();
         ExternalContext ec = fc.getExternalContext();
         ec.responseReset();
@@ -124,15 +125,15 @@ public class ClientController implements Serializable {
         this.file = file;
     }
 
-    public void createServer(Integer port) {
+    public void startServer(Integer port) {
         try {
 
             ServerSocket server = new ServerSocket(port);
             FileServer fileServer = new FileServer(server, Integer.toString(port));
-            
+
             /*Spawn threads to start file servers*/
             pool.execute(fileServer);
-            
+
             servers.put(port, fileServer);
         } catch (IOException ex) {
             Logger.getLogger(ClientController.class.getName()).log(Level.SEVERE, null, ex);
@@ -179,11 +180,35 @@ public class ClientController implements Serializable {
         }
     }
 
+    private void killServer(Integer port) {
+        FileServer fileServer = getServers().get(port);
+        try {
+            fileServer.stop();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     private void addFile(String file, Integer port) {
         if (files.containsKey(file)) {
             files.get(file).add(port);
         } else {
-            files.put(file, new HashSet<>());
+            HashSet<Integer> hashSet = new HashSet<>();
+            files.put(file, hashSet);
+            hashSet.add(port);
         }
+    }
+
+    public ArrayList<String> filesOfServer(Integer port) {
+        ArrayList<String> result = new ArrayList<>();
+        try {
+            files.keySet()
+                    .stream()
+                    .filter(p -> files.get(p).contains(port))
+                    .forEach(result::add);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return result;
     }
 }
