@@ -135,6 +135,7 @@ public class ClientController implements Serializable {
             pool.execute(fileServer);
 
             servers.put(port, fileServer);
+            System.err.println("File Server " + port + " was started.");
         } catch (IOException ex) {
             Logger.getLogger(ClientController.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -180,10 +181,11 @@ public class ClientController implements Serializable {
         }
     }
 
-    private void killServer(Integer port) {
+    public void killServer(Integer port) {
         FileServer fileServer = getServers().get(port);
         try {
             fileServer.stop();
+            System.err.println("File Server " + port + " was shut down.");
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -210,5 +212,15 @@ public class ClientController implements Serializable {
             e.printStackTrace();
         }
         return result;
+    }
+    
+    public boolean isServerAlive(Integer port){
+        try {
+            FileServer fileServer = servers.get(port);
+            return fileServer.isAlive();
+        }catch(Exception e){
+            e.printStackTrace();
+        }
+        return false;
     }
 }

@@ -32,8 +32,8 @@
                 </div>
                 <div id="navbar" class="collapse navbar-collapse">
                     <ul class="nav navbar-nav">
-                        <li class="active"><h:link outcome="index" value="Files" /></li>
-                        <li><h:link outcome="server" value="Server" /></li>
+                        <li class="active"><h:link outcome="index" value="Project" /></li>
+                        <!-- <li><h:link outcome="server" value="Server" /></li>-->
                     </ul>
                 </div><!--/.nav-collapse -->
             </div>
@@ -41,13 +41,13 @@
 
         <div class="starter-template">
 
-            
+
             <div id="interface">
                 <h:form enctype="multipart/form-data">
                     <div class="panel panel-default">
                         <div class="panel-heading">
                             <h4>Gateway options</h4>
-                        
+
                         </div>
                         <div class="panel-body">
                             <p>Please click the left button to select a file to upload, then click the blue upload button.</p>
@@ -58,11 +58,11 @@
                                 </span>
                                 <h:commandButton class="btn btn-default btn-primary" action="#{clientController.upload}" value="Upload" />
                             </div>
-                            
+
                             <p>The list below shows all the files in the service.</p>
 
                         </div>
-                        
+
                         <!-- List group -->
                         <ul class="list-group" >
                             <c:forEach items="#{clientController.files}" var="file">
@@ -81,14 +81,41 @@
                     <div class="panel panel-default">
                         <!-- Default panel contents -->
                         <div class="panel-heading">
-                            <h4>File Directory on FileServer #{server.key}</h4></div>
+                            <h4>File Directory on FileServer #{server.key} 
+                                <c:choose>
+                                    <c:when test="#{clientController.isServerAlive(server.key)}">
+                                        <span class="label label-success">Online</span>
+                                    </c:when>
+                                    <c:otherwise>
+                                        <span class="label label-default">Offline</span>
+                                    </c:otherwise>
+                                </c:choose>
+
+
+                            </h4>
+
+
+                        </div>
 
                         <!-- List group -->
                         <ul class="list-group">
                             <c:forEach var="file" items="#{clientController.filesOfServer(server.key)}">
                                 <li class="list-group-item">${file}</li>
                             </c:forEach>
+
                         </ul>
+
+                        <div class="panel-body">
+
+                            <div class="btn-group btn-group-justified" role="group" >
+                                <h:form>
+                                    <h:commandButton class="btn btn-warning" action="#{clientController.killServer(server.key)}" value="Kill server" /> &nbsp;
+                                    <h:commandButton class="btn btn-success" action="#{clientController.startServer(server.key)}" value="Start server" />
+                                </h:form>
+                            </div>
+
+                        </div>
+
                     </div>
                 </c:forEach>
             </div>

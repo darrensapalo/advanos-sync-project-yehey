@@ -27,9 +27,11 @@ public class FileServer implements Runnable {
 
     private final ServerSocket server;
     private Path directory;
+    private boolean isAlive;
 
     public FileServer(ServerSocket server, String port) {
         this.server = server;
+        this.isAlive = false;
         try {
             directory = Paths.get("C:\\CSC611M", port.toString());
 
@@ -47,6 +49,7 @@ public class FileServer implements Runnable {
     public void run() {
         try {
             while (server.isClosed() == false) {
+                isAlive = true;
                 try (Socket accept = server.accept();
                         InputStream is = accept.getInputStream();
                         BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
@@ -76,10 +79,18 @@ public class FileServer implements Runnable {
         } catch (IOException ex) {
             Logger.getLogger(ClientController.class.getName()).log(Level.SEVERE, null, ex);
         }
+        isAlive = false;
     }
 
     void stop() throws IOException {
         server.close();
     }
 
+    public boolean isStopped(){
+        return server.isClosed();
+    }
+    
+    public boolean isAlive(){
+        return isAlive;
+    }
 }
