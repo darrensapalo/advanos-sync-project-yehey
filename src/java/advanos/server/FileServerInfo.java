@@ -42,4 +42,9 @@ public class FileServerInfo {
         return port;
     }
     
+    
+    @Override
+    public String toString(){
+        return "File server " + port;
+    }
 }

@@ -1,6 +1,7 @@
 package advanos.server;
 
 import advanos.Protocol;
+import advanos.replication.observers.AliveServersObserver;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
@@ -17,6 +18,7 @@ import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import javax.faces.bean.ApplicationScoped;
@@ -40,7 +42,6 @@ public class GatewayServer implements Serializable {
     private Part file;
     private FileServer[] servers;
 
-    
     @PostConstruct
     public void init() {
         ports = new int[Protocol.NUMBER_OF_SERVERS];
@@ -129,7 +130,15 @@ public class GatewayServer implements Serializable {
      */
     public void upload() {
         String filename = file.getSubmittedFileName();
-        long amount = Math.floorDiv((long) Protocol.NUMBER_OF_SERVERS * 2, (long) 3);
+
+        Set<FileServerInfo> infos = Arrays
+                .stream(servers)
+                .map(f -> {
+                    return f.getInformation();
+                })
+                .collect(Collectors.toSet());
+
+        Integer amount = Protocol.computeReplicationAmount(AliveServersObserver.create(infos).count().toBlocking().first());
 
         // From a list of servers
         Observable.from(servers)
@@ -148,7 +157,7 @@ public class GatewayServer implements Serializable {
                     return false;
                 })
                 // Get only the amount
-                .take((int) amount)
+                .take(amount)
                 // And that number should update
                 .subscribe(fileServer -> {
                     try (Socket dest = fileServer.connect();

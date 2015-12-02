@@ -16,13 +16,13 @@ import java.net.Socket;
 public class FileServerConnection {
 
     private final FileServerInfo fileServerInfo;
-    private final Socket socket;
+    private Socket socket;
 
     FileServerConnection(int port) {
         fileServerInfo = new FileServerInfo();
         fileServerInfo.setPort(port);
         
-        socket = Protocol.connect(fileServerInfo);
+        
     }
 
     public FileServerInfo getFileServerInfo() {
@@ -30,6 +30,8 @@ public class FileServerConnection {
     }
 
     public Socket getSocket() {
+        if (socket == null || socket.isClosed())
+            socket = Protocol.connect(fileServerInfo);
         return socket;
     }
     

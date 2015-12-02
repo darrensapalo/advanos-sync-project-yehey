@@ -1,6 +1,8 @@
 package advanos.replication;
 
 import advanos.Protocol;
+import advanos.replication.observers.AliveServersObserver;
+import advanos.server.FileServerInfo;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
@@ -8,12 +10,15 @@ import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.net.ConnectException;
 import java.net.Socket;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 import rx.Observable;
 
 public class ReplicationService extends Thread {
@@ -25,6 +30,23 @@ public class ReplicationService extends Thread {
     private ReplicationService() {
         connections = new HashMap<>();
         directory = Paths.get(Protocol.DIRECTORY, "ReplicationService");
+
+        try {
+            /*Create directory to serve as the file repository of the file server*/
+            if (Files.notExists(directory)) {
+                Files.createDirectories(directory);
+            }
+        } catch (IOException iOException) {
+
+        }
+    }
+
+    private Set<FileServerInfo> connectionInfos() {
+        return connections.values()
+                .stream()
+                .map(f -> {
+                    return f.getFileServerInfo();
+                }).collect(Collectors.toSet());
     }
 
     @Override
@@ -32,9 +54,14 @@ public class ReplicationService extends Thread {
         initializeConnections();
         while (true) {
             try {
-                Thread.sleep(10000);
+                Thread.sleep(3000);
 
-                Observable<FileServerConnection> aliveFileServers = pingConnections();
+                Observable<FileServerInfo> aliveFileServerInfos = AliveServersObserver.create(connectionInfos());
+
+                Observable<FileServerConnection> aliveFileServers = aliveFileServerInfos
+                        .map(f -> {
+                            return connections.get(f.getPort());
+                        });
 
                 Observable<String> filesThatNeedReplication = analyzeFileHealth(aliveFileServers);
 
@@ -55,42 +82,8 @@ public class ReplicationService extends Thread {
 
     public static void main(String[] args) {
 
-        ReplicationService.instance();
+        ReplicationService.instance().start();
 
-        try (Socket server = new Socket("localhost", 1099)) {
-            System.out.println("ggg");
-        } catch (ConnectException e) {
-            System.out.println("Failed");
-            System.out.println(e + " first");
-            try (Socket server2 = new Socket("localhost", 1100);
-                    OutputStream os = server2.getOutputStream();
-                    InputStream is = server2.getInputStream();
-                    ObjectInputStream ois = new ObjectInputStream(is)) {
-                System.out.println("then");
-                os.write(Protocol.COPY_ALL);
-                os.flush();
-                Set<String> fileNames = (Set<String>) ois.readObject();
-                try (Socket server3 = new Socket("localhost", 1101);
-                        OutputStream os3 = server3.getOutputStream();
-                        ObjectOutputStream oos = new ObjectOutputStream(os3)) {
-                    os.write(Protocol.PASTE_ALL);
-                    oos.writeObject(oos);
-                    oos.flush();
-                    for (String file : fileNames) {
-                        byte[] buffer = new byte[1024];
-                        while (is.read(buffer) > -1) {
-                            os3.write(buffer);
-                        }
-                        os3.flush();
-                    }
-                }
-            } catch (ClassNotFoundException | IOException ex) {
-                System.out.println(ex + " second");
-                e.printStackTrace();
-            }
-        } catch (IOException e) {
-            System.out.println(e);
-        }
     }
 
     private void initializeConnections() {
@@ -100,24 +93,22 @@ public class ReplicationService extends Thread {
         }
     }
 
-    private Observable<FileServerConnection> pingConnections() {
-        return Observable.from(connections.values())
-                // Get all the alive servers
-                .filter(c -> {
-                    Socket socket = c.getSocket();
-                    Protocol.ping(socket);
-                    return Protocol.readNumber(socket) == Protocol.RESPONSE_PING_ALIVE;
-                });
-    }
-
     private Observable<String> analyzeFileHealth(Observable<FileServerConnection> aliveFileServers) {
         return aliveFileServers
                 // For each server connection, query their file lists
                 .map(c -> {
-                    Socket socket = c.getSocket();
-                    Protocol.write(socket, Protocol.FILE_LIST);
-                    return Protocol.readFileList(socket);
+                    try {
+                        Socket socket = c.getSocket();
+                        Protocol.write(socket, Protocol.FILE_LIST);
+                        Set<String> readFileList = Protocol.readFileList(socket);
+                        socket.close();
+                        return readFileList;
+                    } catch (IOException ex) {
+                        Logger.getLogger(ReplicationService.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                    return new HashSet<String>();
                 })
+                .retry()
                 // Accumulate all of these file lists into a hashmap that counts all the references of each file
                 .reduce(new HashMap<String, Integer>(), (hashmap, fileList) -> {
 
@@ -135,6 +126,10 @@ public class ReplicationService extends Thread {
                 })
                 // View as list
                 .map(hashmap -> {
+                    hashmap.forEach((k, v) -> {
+                        System.out.println("File " + k + " has " + v + " occurrences");
+                    });
+
                     return hashmap.entrySet();
                 })
                 // Pair it with the number of alive servers
@@ -144,6 +139,7 @@ public class ReplicationService extends Thread {
                     // If the entry has less instances than the number of alive servers, then you need to replicate                    
                     return entry.getValue() < Protocol.computeReplicationAmount(aliveFileServers.count().toBlocking().first());
                 })
+                .retry()
                 .map(f -> {
                     return f.getKey();
                 });
@@ -155,55 +151,89 @@ public class ReplicationService extends Thread {
 
         // For each of the files that need to be replicated
         filesThatNeedReplication.forEach(filename -> {
+            System.out.println("File " + filename + " needs replication");
 
             aliveServers
                     // Find out which servers have the file
                     .filter(s -> {
-                        Socket socket = s.getSocket();
-                        Protocol.write(socket, Protocol.HAS_FILE);
-                        Protocol.write(socket, filename);
-                        return Protocol.readNumber(socket) == Protocol.RESPONSE_HAS_FILE;
+                        boolean hasFile = false;
+                        try (Socket socket = s.getSocket()) {
+                            System.out.println("Finding out who has the file");
+                            Protocol.write(socket, Protocol.HAS_FILE);
+                            Protocol.write(socket, filename);
+                            hasFile = Protocol.readNumber(socket) == Protocol.RESPONSE_HAS_FILE;
+                            if (hasFile == false) {
+                                System.out.println(s.getFileServerInfo() + " does not have the file");
+                            } else {
+                                System.out.println(s.getFileServerInfo() + " has the file");
+                            }
+
+                        } catch (IOException ex) {
+                            Logger.getLogger(ReplicationService.class.getName()).log(Level.SEVERE, null, ex);
+                        }
+                        return hasFile;
                     })
+                    .retry()
                     // Download file once
                     .first(s -> {
-                        try {
-                            Socket socket = s.getSocket();
+                        try (Socket socket = s.getSocket()) {
+                            System.out.println("Downloading file once...");
                             Protocol.write(socket, Protocol.DOWNLOAD);
+                            System.out.println("Sending file name...");
                             Protocol.write(socket, filename);
+
+                            System.out.println("Reading response...");
                             if (Protocol.readNumber(socket) == Protocol.RESPONSE_HAS_FILE) {
-                                Protocol.readFile(socket.getInputStream(), directory);
+                                System.out.println("Server has the file.");
+                                Protocol.receiveFile(socket.getInputStream(), directory, filename);
+                                System.out.println("Downloaded file " + filename + " successfully");
                                 return true;
+                            } else {
+                                System.out.println("Server does not have it.");
+                                return false;
                             }
                         } catch (IOException ex) {
                             Logger.getLogger(ReplicationService.class.getName()).log(Level.SEVERE, null, ex);
                         }
                         return false;
                     })
+                    .retry()
                     // Go back to all the alive servers
                     .flatMap(f -> {
                         return aliveServers;
                     })
                     // determine which alive servers don't have the file
                     .filter(s -> {
-                        Socket socket = s.getSocket();
-                        Protocol.write(socket, Protocol.HAS_FILE);
-                        Protocol.write(socket, filename);
-                        return Protocol.readNumber(socket) != Protocol.RESPONSE_HAS_FILE;
+                        try (Socket socket = s.getSocket()) {
+                            Protocol.write(socket, Protocol.HAS_FILE);
+                            Protocol.write(socket, filename);
+                            return Protocol.readNumber(socket) != Protocol.RESPONSE_HAS_FILE;
+                        } catch (IOException e) {
+                            
+                        }
+                        return false;
                     })
+                    .retry()
                     // Determine how many remaining servers are needed to replicate, and take that many
                     .take(aliveServers.count().toBlocking().first())
                     // send files to those servers
-                    .map(s -> {
-                        Socket socket = s.getSocket();
-                        Protocol.write(socket, Protocol.UPLOAD);
-                        Protocol.write(socket, filename);
-                        Protocol.sendFileBytes(socket, directory.resolve(filename));
-                        return s;
-                    });
+                    .subscribe(s -> {
+                        System.out.println("Distributing file " + filename + " to " + s.getFileServerInfo());
+                        try (Socket socket = s.getSocket()) {
+                            Protocol.write(socket, Protocol.UPLOAD);
+                            Protocol.write(socket, filename);
+                            Protocol.sendFileBytes(socket, directory.resolve(filename));
+                        } catch (IOException ex) {
+                            Logger.getLogger(ReplicationService.class.getName()).log(Level.SEVERE, null, ex);
+                        }
+                    },
+                            e -> {
+                                System.out.println("Something bad happened.");
+                                e.printStackTrace();
+                            });
 
         });
 
-        
     }
 
 }

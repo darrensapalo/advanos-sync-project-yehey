@@ -19,6 +19,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.faces.context.ExternalContext;
 import javax.faces.context.FacesContext;
+import rx.Observable;
+import rx.Observer;
 
 public class Protocol {
 
@@ -83,13 +85,30 @@ public class Protocol {
      * @param inputStream The input stream that receiving the data
      * @param information the information describing the file server
      */
-    public static void readFile(InputStream inputStream, Path directory) {
+    public static void uploadFile(InputStream inputStream, Path directory) {
         try {
             BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
             String fileName = bufferedReader.readLine();
             Files.copy(inputStream, directory.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException ex) {
             Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+
+    /**
+     * This function immediately receives the file data as bytes from the input
+     * stream and saves it in the directory file path specified.
+     *
+     * @param inputStream The input stream that receiving the data
+     * @param directory The base folder where it should be stored
+     * @param filename the name of the file
+     */
+    public static void receiveFile(InputStream inputStream, Path directory, String filename) {
+        try {
+            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
+            Files.copy(inputStream, directory.resolve(filename), StandardCopyOption.REPLACE_EXISTING);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
@@ -165,13 +184,13 @@ public class Protocol {
      * @param file The file to be sent
      */
     public static void sendFileBytes(Socket dest, Path file) {
-        try {
-            InputStream fileSelected = Files.newInputStream(file);
+        try (InputStream fileSelected = Files.newInputStream(file)){
+            OutputStream os = dest.getOutputStream();
             byte[] buffer = new byte[1024];
             while (fileSelected.read(buffer) > -1) {
-                dest.getOutputStream().write(buffer);
+                os.write(buffer);
             }
-            dest.getOutputStream().flush();
+            os.flush();
         } catch (IOException ex) {
             Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -202,7 +221,8 @@ public class Protocol {
      * @return the file names read from the socket
      */
     public static Set<String> readFileList(Socket from) {
-        try (ObjectInputStream ois = new ObjectInputStream(from.getInputStream())) {
+        try {
+            ObjectInputStream ois = new ObjectInputStream(from.getInputStream());
             return (Set<String>) ois.readObject();
         } catch (IOException | ClassNotFoundException ex) {
             Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
@@ -280,13 +300,16 @@ public class Protocol {
      * @param from the socket to read from
      * @return the integer that was read
      */
-    public static int readNumber(Socket from) {
-        try (InputStream is = from.getInputStream(); BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
-            return br.read();
-        } catch (IOException ex) {
-            Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
-        }
-        return -1;
+    public static Integer readNumber(Socket from) {
+        return (Integer) Observable.create(subscriber -> {
+            try {
+                InputStream is = from.getInputStream();
+                subscriber.onNext(is.read());
+            } catch (Exception e) {
+                subscriber.onError(e);
+            }
+
+        }).first().toBlocking().first();
     }
 
     /**
@@ -330,7 +353,7 @@ public class Protocol {
         try {
             return new Socket("localhost", info.getPort());
         } catch (IOException ex) {
-            Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, "Failed to create a socket connecting to " + info, ex);
         }
         return null;
     }

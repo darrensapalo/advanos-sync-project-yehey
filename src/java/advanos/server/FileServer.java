@@ -56,8 +56,12 @@ public final class FileServer implements Runnable {
         try {
             while (true) {
                 try (Socket dest = server.accept();
+                        
                         InputStream inputStream = dest.getInputStream()) {
-                    switch (inputStream.read()) {
+                    int input = inputStream.read();
+                    System.out.println("Received a connection with request " + input);
+                    
+                    switch (input) {
                         case Protocol.SERVER_INFO:
                             Protocol.sendObject(dest, information);
                             break;
@@ -67,7 +71,7 @@ public final class FileServer implements Runnable {
                             break;
 
                         case Protocol.UPLOAD:
-                            Protocol.readFile(inputStream, information.getDirectory());
+                            Protocol.uploadFile(inputStream, information.getDirectory());
 
                             break;
                         case Protocol.DOWNLOAD:
