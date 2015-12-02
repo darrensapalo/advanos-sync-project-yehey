@@ -8,6 +8,7 @@ import java.io.ObjectInputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.Serializable;
+import java.net.ConnectException;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.Arrays;
@@ -138,7 +139,7 @@ public class GatewayServer implements Serializable {
                 })
                 .collect(Collectors.toSet());
 
-        Integer amount = Protocol.computeReplicationAmount(AliveServersObserver.create(infos).count().toBlocking().first());
+        Integer amount = Protocol.NUMBER_OF_SERVERS;//.computeReplicationAmount(AliveServersObserver.create(infos).count().toBlocking().first());
 
         // From a list of servers
         Observable.from(servers)
@@ -149,8 +150,8 @@ public class GatewayServer implements Serializable {
                         Protocol.ping(dest);
                         int response = Protocol.readNumber(dest);
                         return response == Protocol.RESPONSE_PING_ALIVE;
-                    } catch (SocketException e) {
-                        Logger.getLogger(GatewayServer.class.getName()).log(Level.INFO, "Could not connect to " + s, e);
+                    } catch (ConnectException e) {
+                        Logger.getLogger(GatewayServer.class.getName()).log(Level.INFO, "Could not connect to {0}", s);
                     } catch (IOException ex) {
                         Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
                     }
@@ -170,10 +171,9 @@ public class GatewayServer implements Serializable {
 
                         Protocol.transferBytes(inputStream, dest.getOutputStream());
 
-                        System.out.println(filename);
                         files.add(filename);
-                    } catch (SocketException e) {
-                        Logger.getLogger(GatewayServer.class.getName()).log(Level.INFO, "Could not connect to " + fileServer, e);
+                    } catch (ConnectException e) {
+                        Logger.getLogger(GatewayServer.class.getName()).log(Level.INFO, "Could not connect to {0}", fileServer);
                     } catch (IOException ex) {
                         Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
                     }

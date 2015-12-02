@@ -11,6 +11,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.net.ConnectException;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -351,13 +352,8 @@ public class Protocol {
         return null;
     }
 
-    public static Socket connect(FileServerInfo info) {
-        try {
-            return new Socket("localhost", info.getPort());
-        } catch (IOException ex) {
-            Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, "Failed to create a socket connecting to " + info, ex);
-        }
-        return null;
+    public static Socket connect(FileServerInfo info) throws IOException {
+        return new Socket("localhost", info.getPort());
     }
 
     // todo: modify the condition

@@ -8,6 +8,7 @@ package advanos.replication.observers;
 import advanos.Protocol;
 import advanos.server.FileServerInfo;
 import java.io.IOException;
+import java.net.ConnectException;
 import java.net.Socket;
 import java.util.Set;
 import java.util.logging.Level;
@@ -30,6 +31,8 @@ public class AliveServersObserver {
                         boolean isAlive = Protocol.readNumber(socket) == Protocol.RESPONSE_PING_ALIVE;
                         socket.close();
                         return isAlive;
+                    } catch (ConnectException ex) {
+                        Logger.getLogger(AliveServersObserver.class.getName()).log(Level.INFO, "Socket {0} is closed.", c.getPort());
                     } catch (IOException ex) {
                         Logger.getLogger(AliveServersObserver.class.getName()).log(Level.SEVERE, null, ex);
                     }

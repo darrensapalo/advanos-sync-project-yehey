@@ -7,6 +7,7 @@ package advanos.replication;
 
 import advanos.Protocol;
 import advanos.server.FileServerInfo;
+import java.io.IOException;
 import java.net.Socket;
 
 /**
@@ -29,7 +30,7 @@ public class FileServerConnection {
         return fileServerInfo;
     }
 
-    public Socket getSocket() {
+    public Socket getSocket() throws IOException {
         if (socket == null || socket.isClosed())
             socket = Protocol.connect(fileServerInfo);
         return socket;
