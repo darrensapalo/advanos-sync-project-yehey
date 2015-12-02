@@ -40,20 +40,16 @@ public class GatewayServer implements Serializable {
     private Part file;
     private FileServer[] servers;
 
-    /**
-     * Number of servers
-     */
-    private static final int NUM_SERV = 6;
-
+    
     @PostConstruct
     public void init() {
-        ports = new int[NUM_SERV];
+        ports = new int[Protocol.NUMBER_OF_SERVERS];
         files = new HashSet<>();
-        pool = Executors.newFixedThreadPool(NUM_SERV);
-        servers = new FileServer[NUM_SERV];
+        pool = Executors.newFixedThreadPool(Protocol.NUMBER_OF_SERVERS);
+        servers = new FileServer[Protocol.NUMBER_OF_SERVERS];
 
         /*Start all servers*/
-        for (int i = 0; i < NUM_SERV; i++) {
+        for (int i = 0; i < Protocol.NUMBER_OF_SERVERS; i++) {
             ports[i] = Protocol.START_PORT + i;
             try {
                 servers[i] = new FileServer(ports[i]);
@@ -64,7 +60,7 @@ public class GatewayServer implements Serializable {
         }
 
         /*Receive file list from servers*/
-        for (int i = 0; i < NUM_SERV; i++) {
+        for (int i = 0; i < Protocol.NUMBER_OF_SERVERS; i++) {
             try (Socket connection = new Socket("localhost", ports[i]);
                     OutputStream out = connection.getOutputStream()) {
                 out.write(Protocol.FILE_LIST);
@@ -133,7 +129,7 @@ public class GatewayServer implements Serializable {
      */
     public void upload() {
         String filename = file.getSubmittedFileName();
-        long amount = Math.floorDiv((long) NUM_SERV * 2, (long) 3);
+        long amount = Math.floorDiv((long) Protocol.NUMBER_OF_SERVERS * 2, (long) 3);
 
         // From a list of servers
         Observable.from(servers)
@@ -143,7 +139,7 @@ public class GatewayServer implements Serializable {
                         Socket dest = s.connect();
                         Protocol.ping(dest);
                         int response = Protocol.readNumber(dest);
-                        return response == Protocol.PING_RESPONSE_ALIVE;
+                        return response == Protocol.RESPONSE_PING_ALIVE;
                     } catch (SocketException e) {
                         Logger.getLogger(GatewayServer.class.getName()).log(Level.INFO, "Could not connect to " + s, e);
                     } catch (IOException ex) {

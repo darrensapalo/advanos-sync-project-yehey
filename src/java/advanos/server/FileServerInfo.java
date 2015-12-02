@@ -19,11 +19,11 @@ public class FileServerInfo {
     private Set<String> fileList;
     private int port = -1;
 
-    void setFileList(Set<String> fileList) {
+    public void setFileList(Set<String> fileList) {
         this.fileList = fileList;
     }
 
-    void setPort(int port) {
+    public void setPort(int port) {
         this.port = port;
     }
 

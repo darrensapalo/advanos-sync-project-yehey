@@ -28,14 +28,20 @@ public class Protocol {
     public static final int COPY_ALL = 4;
     public static final int PASTE_ALL = 5;
     public static final int SERVER_INFO = 6;
-    
+
     public static final int PING = 7;
-    public static int PING_RESPONSE_ALIVE = 0;
-    
+    public static int RESPONSE_PING_ALIVE = 0;
+
     public static final int HAS_FILE = 8;
+    public static final int RESPONSE_HAS_FILE = 1;
+
     public static final int START_PORT = 1099;
     public static final String DIRECTORY = "C:\\CSC611M";
-    
+
+    /**
+     * Number of servers
+     */
+    public static final int NUMBER_OF_SERVERS = 6;
 
     /**
      * Sends bytes from one stream to another
@@ -77,12 +83,11 @@ public class Protocol {
      * @param inputStream The input stream that receiving the data
      * @param information the information describing the file server
      */
-    public static void readFile(InputStream inputStream, FileServerInfo information) {
+    public static void readFile(InputStream inputStream, Path directory) {
         try {
             BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
-
             String fileName = bufferedReader.readLine();
-            Files.copy(inputStream, information.getDirectory().resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(inputStream, directory.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException ex) {
             Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -127,8 +132,9 @@ public class Protocol {
     }
 
     /**
-     * From a socket, this first reads the first line as the filename, and 
-     * then responds whether it has the file or not.
+     * From a socket, this first reads the first line as the filename, and then
+     * responds whether it has the file or not.
+     *
      * @param dest the socket requesting if the file available
      * @param information information of the file server
      * @return 1 if available, 0 otherwise
@@ -187,15 +193,15 @@ public class Protocol {
         });
     }
 
-    
     /**
      * Reads a set of string which are the filenames of the files available on
      * the file server connected to the socket
+     *
      * @param from the socket to read from
      * @param information the information of the file server
      * @return the file names read from the socket
      */
-    public static Set<String> readFileList(Socket from, FileServerInfo information) {
+    public static Set<String> readFileList(Socket from) {
         try (ObjectInputStream ois = new ObjectInputStream(from.getInputStream())) {
             return (Set<String>) ois.readObject();
         } catch (IOException | ClassNotFoundException ex) {
@@ -205,13 +211,15 @@ public class Protocol {
     }
 
     /**
-     * Reads the file list from a socket, and then for each of the filenames,
-     * it saves the data on to the directory of the receiving file server
+     * Reads the file list from a socket, and then for each of the filenames, it
+     * saves the data on to the directory of the receiving file server
+     *
      * @param from the socket from where the stream of file data will come from
-     * @param information information of the file server that will receive the data
+     * @param information information of the file server that will receive the
+     * data
      */
     public static void pasteAll(Socket from, FileServerInfo information) {
-        Set<String> fileList = readFileList(from, information);
+        Set<String> fileList = readFileList(from);
 
         fileList.forEach(filename -> {
             try {
@@ -225,6 +233,7 @@ public class Protocol {
 
     /**
      * Writes a number to a socket
+     *
      * @param dest the destination socket
      * @param number the number to be written
      */
@@ -258,6 +267,7 @@ public class Protocol {
 
     /**
      * Sends a ping request to a server to see if it is alive.
+     *
      * @param dest The socket to the file server to see if it is alive
      */
     public static void ping(Socket dest) {
@@ -266,6 +276,7 @@ public class Protocol {
 
     /**
      * Reads an integer from a socket
+     *
      * @param from the socket to read from
      * @return the integer that was read
      */
@@ -280,11 +291,12 @@ public class Protocol {
 
     /**
      * Creates a download dialog box for the gateway server
+     *
      * @param from the socket that will be sending the file data in bytes
      * @param fileName the name of the file
-     * @throws IOException 
+     * @throws IOException
      */
-    public static void downloadFile(Socket from, String fileName) throws IOException {
+    public static void deliverFileToBrowser(Socket from, String fileName) throws IOException {
         /*Response header*/
         FacesContext fc = FacesContext.getCurrentInstance();
         ExternalContext ec = fc.getExternalContext();
@@ -299,6 +311,7 @@ public class Protocol {
 
     /**
      * Reads a line from the socket
+     *
      * @param dest the socket to read from
      * @return the first line it can read
      */
@@ -311,5 +324,19 @@ public class Protocol {
             Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
         }
         return null;
+    }
+
+    public static Socket connect(FileServerInfo info) {
+        try {
+            return new Socket("localhost", info.getPort());
+        } catch (IOException ex) {
+            Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        return null;
+    }
+
+    // todo: modify the condition
+    public static Integer computeReplicationAmount(Integer aliveServers) {
+        return aliveServers;
     }
 }

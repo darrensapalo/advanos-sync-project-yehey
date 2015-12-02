@@ -67,7 +67,7 @@ public final class FileServer implements Runnable {
                             break;
 
                         case Protocol.UPLOAD:
-                            Protocol.readFile(inputStream, information);
+                            Protocol.readFile(inputStream, information.getDirectory());
 
                             break;
                         case Protocol.DOWNLOAD:
@@ -92,7 +92,7 @@ public final class FileServer implements Runnable {
                         case Protocol.HAS_FILE:
                             String fileName = Protocol.readLine(dest);
                             if (getFileList().contains(fileName)) {
-                                Protocol.write(dest, 1);
+                                Protocol.write(dest, Protocol.RESPONSE_HAS_FILE);
                             } else {
                                 Protocol.write(dest, 0);
                             }
