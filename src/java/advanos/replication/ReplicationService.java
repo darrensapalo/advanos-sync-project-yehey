@@ -11,7 +11,6 @@ import java.net.Socket;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -25,7 +24,6 @@ public class ReplicationService extends Thread {
 
     private ReplicationService() {
         connections = new HashMap<>();
-        fileIndex = new HashMap<>();
         directory = Paths.get(Protocol.DIRECTORY, "ReplicationService");
     }
 
