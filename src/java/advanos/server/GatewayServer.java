@@ -158,6 +158,7 @@ public class GatewayServer implements Serializable {
                 })
                 // Get only the amount
                 .take(amount)
+                
                 // And that number should update
                 .subscribe(fileServer -> {
                     try (Socket dest = fileServer.connect();
@@ -169,6 +170,7 @@ public class GatewayServer implements Serializable {
 
                         Protocol.transferBytes(inputStream, dest.getOutputStream());
 
+                        System.out.println(filename);
                         files.add(filename);
                     } catch (SocketException e) {
                         Logger.getLogger(GatewayServer.class.getName()).log(Level.INFO, "Could not connect to " + fileServer, e);

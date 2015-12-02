@@ -1,6 +1,8 @@
 package advanos;
 
 import advanos.server.FileServerInfo;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -53,11 +55,15 @@ public class Protocol {
      * @throws IOException
      */
     public static void transferBytes(InputStream inputStream, OutputStream outputStream) throws IOException {
-        byte[] buffer = new byte[1024];
-        while (inputStream.read(buffer) > -1) {
-            outputStream.write(buffer);
+        try (BufferedInputStream bis = new BufferedInputStream(inputStream);
+                BufferedOutputStream bos = new BufferedOutputStream(outputStream)) {
+            byte[] buffer = new byte[1024];
+            int length;
+            while ((length = bis.read(buffer)) > 0) {
+                bos.write(buffer, 0, length);
+            }
+            bos.flush();
         }
-        outputStream.flush();
     }
 
     /**
@@ -184,13 +190,9 @@ public class Protocol {
      * @param file The file to be sent
      */
     public static void sendFileBytes(Socket dest, Path file) {
-        try (InputStream fileSelected = Files.newInputStream(file)){
-            OutputStream os = dest.getOutputStream();
-            byte[] buffer = new byte[1024];
-            while (fileSelected.read(buffer) > -1) {
-                os.write(buffer);
-            }
-            os.flush();
+        try (InputStream fileSelected = Files.newInputStream(file);
+                OutputStream os = dest.getOutputStream();){
+            transferBytes(fileSelected, os);
         } catch (IOException ex) {
             Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -360,6 +362,6 @@ public class Protocol {
 
     // todo: modify the condition
     public static Integer computeReplicationAmount(Integer aliveServers) {
-        return aliveServers;
+        return Math.floorDiv(aliveServers * 2, 3);
     }
 }
