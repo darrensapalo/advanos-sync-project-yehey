@@ -44,18 +44,17 @@
 
             
             <div id="servers">
-                <h2>File Servers</h2>
                 <c:forEach var="server" items="#{gatewayServer.servers}">
                     <div class="panel panel-default">
                         <!-- Default panel contents -->
                         <div class="panel-heading">
-                            <h4>File Directory on FileServer #{server.key} 
+                            <h4>File Directory on FileServer #{server.port} 
                                 <c:choose>
-                                    <c:when test="#{gatewayServer.isServerAlive(server.key)}">
-                                        <span class="label label-success">Online</span>
+                                    <c:when test="#{server.closed}">
+                                        <span class="label label-default">Offline</span>
                                     </c:when>
                                     <c:otherwise>
-                                        <span class="label label-default">Offline</span>
+                                        <span class="label label-success">Online</span>
                                     </c:otherwise>
                                 </c:choose>
 
@@ -67,7 +66,7 @@
 
                         <!-- List group -->
                         <ul class="list-group">
-                            <c:forEach var="file" items="#{gatewayServer.filesOfServer(server.key)}">
+                            <c:forEach var="file" items="#{server.fileList}">
                                 <li class="list-group-item">${file}</li>
                             </c:forEach>
 
@@ -77,8 +76,8 @@
 
                             <div class="btn-group btn-group-justified" role="group" >
                                 <h:form>
-                                    <h:commandButton class="btn btn-warning" action="#{gatewayServer.killServer(server.key)}" value="Kill server" /> &nbsp;
-                                    <h:commandButton class="btn btn-success" action="#{gatewayServer.startServer(server.key)}" value="Start server" />
+                                    <h:commandButton class="btn btn-warning" action="#{gatewayServer.killServer(server.port)}" value="Kill server" /> &nbsp;
+                                    <h:commandButton class="btn btn-success" action="#{gatewayServer.startServer(server.port)}" value="Start server" />
                                 </h:form>
                             </div>
 

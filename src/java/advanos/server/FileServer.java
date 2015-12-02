@@ -1,132 +1,158 @@
 package advanos.server;
 
 import advanos.Protocol;
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.ObjectOutputStream;
-import java.io.OutputStream;
-import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-/**
- *
- * @author Darren
- */
-public class FileServer extends Thread {
+public final class FileServer implements Runnable {
 
-
-    private final ServerSocket server;
-    private Path directory;
-    private boolean isAlive;
+    private FileServerInfo information;
+    private ServerSocket server;
+    private final int port;
+    private final Path directory;
 
     public FileServer(int port) throws IOException {
-        this.server = new ServerSocket(port);
-        this.isAlive = false;
-        try {
-            directory = Paths.get("C:\\CSC611M", Integer.toString(port));
+        this.port = port;
+        directory = Paths.get("C:\\CSC611M", Integer.toString(port));
 
-            /*Create directory to serve as the file repository of the file server*/
-            if (Files.notExists(directory)) {
-                Files.createDirectories(directory);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
+        /*Create directory to serve as the file repository of the file server*/
+        if (Files.notExists(directory)) {
+            Files.createDirectories(directory);
         }
 
+        information = new FileServerInfo();
+        information.setPort(port);
+        information.setFileList(getFileList());
+
+        start();
+    }
+
+    public boolean isClosed() {
+        return server.isClosed();
+    }
+
+    public void start() throws IOException {
+        server = new ServerSocket(port);
+    }
+
+    public void stop() throws IOException {
+        server.close();
     }
 
     @Override
     public void run() {
+
         try {
-            while (server.isClosed() == false) {
-                isAlive = true;
-                try (Socket accept = server.accept();
-                        InputStream is = accept.getInputStream();
-                        
-                        BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
-                    switch (br.readLine()) {
-                        case Protocol.FILE_LIST:
-                            try (ObjectOutputStream oos = new ObjectOutputStream(accept.getOutputStream())) {
-                                Set<String> list = Files.list(directory)
-                                        .map(f -> f.getFileName().toString())
-                                        .collect(Collectors.toSet());
-                                oos.writeObject(list);
-                                oos.flush();
-                            }
+            while (true) {
+                try (Socket dest = server.accept();
+                        InputStream inputStream = dest.getInputStream()) {
+                    switch (inputStream.read()) {
+                        case Protocol.SERVER_INFO:
+                            Protocol.sendObject(dest, information);
                             break;
+
+                        case Protocol.FILE_LIST:
+                            Protocol.sendObject(dest, getFileList());
+                            break;
+
                         case Protocol.UPLOAD:
-                            Files.copy(is, directory.resolve(br.readLine()), StandardCopyOption.REPLACE_EXISTING);
+                            Protocol.readFile(inputStream, information);
+
                             break;
                         case Protocol.DOWNLOAD:
-                            try (OutputStream os = accept.getOutputStream();
-                                    InputStream fileSelected = Files.newInputStream(directory.resolve(br.readLine()))) {
-                                Protocol.transferBytes(fileSelected, os);
-                            }
+                            Protocol.sendRequestedFile(dest, information);
                             break;
-                        case Protocol.SHUTDOWN:
-                            try (OutputStream os = accept.getOutputStream(); PrintWriter pw = new PrintWriter(os)) {
-                                pw.println(Protocol.OK);
-                                pw.flush();
+
+                        /*Sends all files of this server starting with a set of file names*/
+                        case Protocol.COPY_ALL:
+                            Protocol.copyAll(dest, information);
+                            break;
+
+                        /*Receives all files of this server starting with a set of file names*/
+                        case Protocol.PASTE_ALL:
+                            Protocol.pasteAll(dest, information);
+                            break;
+
+                        /* Responds with 0 if there are no issues */
+                        case Protocol.PING:
+                            Protocol.write(dest, 0);
+                            break;
+
+                        case Protocol.HAS_FILE:
+                            String fileName = Protocol.readLine(dest);
+                            if (getFileList().contains(fileName)) {
+                                Protocol.write(dest, 1);
+                            } else {
+                                Protocol.write(dest, 0);
                             }
-                            server.close();
                             break;
                     }
                 }
             }
         } catch (SocketException ex) {
-
+            //Socket is closed
+            System.out.println(ex + " " + port);
         } catch (IOException ex) {
             Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
         }
-        isAlive = false;
+
     }
 
-    void stopServer() throws IOException {
-        server.close();
+    /**
+     *
+     * @param oos Given an ObjectOutputStream, sends the list of files as a
+     * Set<String>
+     * @return the list of files
+     * @throws IOException
+     */
+    private Set<String> sendFileList(ObjectOutputStream oos) throws IOException {
+        Set<String> list = getFileList();
+        oos.writeObject(list);
+        oos.flush();
+        return list;
     }
 
-    public boolean isStopped(){
-        return server.isClosed();
+    /**
+     *
+     * @return a set of String objects, the list of files in this server
+     * @throws IOException
+     */
+    public Set<String> getFileList() throws IOException {
+        return Files.list(directory)
+                .map(f -> f.getFileName().toString())
+                .collect(Collectors.toSet());
     }
-    
-    public boolean isServerAlive(){
-        return isAlive;
+
+    public FileServerInfo getInformation() {
+        return information;
     }
-    
-    
-    private static void create(int port) {
-        try {
-            FileServer fileServer = new FileServer(port);
-            fileServer.start();
-        } catch (IOException ex) {
-            Logger.getLogger(FileServer.class.getName()).log(Level.SEVERE, null, ex);
-        }
+
+    public Socket connect() throws IOException {
+        System.out.println("Creating a new connection to file server " + port);
+        return connect(information.getPort());
     }
-    
-    public static void main(String[] args) {
-        if (args.length != 1){
-            System.err.println("Please input the ID of this FileServer (e.g. 0).");
-            System.exit(1);
-        }
-        
-        try {
-            int port = Integer.parseInt(args[0]);
-            FileServer.create(port);
-        }catch(NumberFormatException e){
-            System.err.println("Please input a valid ID for this FileServer (e.g. 0).");
-            System.exit(2);
-        }
+
+    public static Socket connect(int port) throws IOException {
+        return new Socket("localhost", port);
+    }
+
+    public int getPort() {
+        return port;
+    }
+
+    @Override
+    public String toString() {
+        return "File Server " + port;
     }
 }

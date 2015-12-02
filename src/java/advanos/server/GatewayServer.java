@@ -7,17 +7,16 @@ import java.io.ObjectInputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.Serializable;
-import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.HashMap;
+import java.net.SocketException;
+import java.util.Arrays;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import javax.faces.bean.ApplicationScoped;
@@ -25,6 +24,7 @@ import javax.faces.bean.ManagedBean;
 import javax.faces.context.ExternalContext;
 import javax.faces.context.FacesContext;
 import javax.servlet.http.Part;
+import rx.Observable;
 
 /**
  *
@@ -34,36 +34,44 @@ import javax.servlet.http.Part;
 @ApplicationScoped
 public class GatewayServer implements Serializable {
 
-    private Map<Integer, FileServer> servers;
-    private Map<String, Set<Integer>> files;
+    private int[] ports;
+    private Set<String> files;
     private ExecutorService pool;
     private Part file;
+    private FileServer[] servers;
 
     /**
      * Number of servers
      */
-    private static final int NUM_SERV = 3;
+    private static final int NUM_SERV = 6;
 
     @PostConstruct
     public void init() {
-        files = new HashMap<>();
-        servers = new HashMap<>();
+        ports = new int[NUM_SERV];
+        files = new HashSet<>();
         pool = Executors.newFixedThreadPool(NUM_SERV);
+        servers = new FileServer[NUM_SERV];
 
         /*Start all servers*/
         for (int i = 0; i < NUM_SERV; i++) {
-            Integer port = Protocol.START_PORT + i;
-            startServer(port);
+            ports[i] = Protocol.START_PORT + i;
+            try {
+                servers[i] = new FileServer(ports[i]);
+                pool.execute(servers[i]);
+            } catch (IOException ex) {
+                Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        }
 
-            /*Gateway: Receive file list from server*/
-            try (Socket connection = new Socket("localhost", port);
-                    PrintWriter pw = new PrintWriter(connection.getOutputStream())) {
-                pw.println(Protocol.FILE_LIST);
-                pw.flush();
+        /*Receive file list from servers*/
+        for (int i = 0; i < NUM_SERV; i++) {
+            try (Socket connection = new Socket("localhost", ports[i]);
+                    OutputStream out = connection.getOutputStream()) {
+                out.write(Protocol.FILE_LIST);
+                out.flush();
                 try (ObjectInputStream ois = new ObjectInputStream(connection.getInputStream())) {
                     Set<String> fileNames = (Set<String>) ois.readObject();
-                    fileNames.stream()
-                            .forEach(f -> addFile(f, port));
+                    files.addAll(fileNames);
                 }
             } catch (ClassNotFoundException | IOException ex) {
                 Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
@@ -76,9 +84,9 @@ public class GatewayServer implements Serializable {
      */
     @PreDestroy
     public void cleanup() {
-        servers.values().forEach((fileServer) -> {
+        Arrays.stream(servers).forEach(server -> {
             try {
-                fileServer.stopServer();
+                server.stop();
             } catch (IOException ex) {
                 Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
             }
@@ -87,63 +95,36 @@ public class GatewayServer implements Serializable {
     }
 
     public void download(String fileName) {
-        /* Replicate file with other servers if necessary */
- /*Response*/
-        FacesContext fc = FacesContext.getCurrentInstance();
-        ExternalContext ec = fc.getExternalContext();
-        ec.responseReset();
-        ec.setResponseContentType(ec.getMimeType(fileName));
-        ec.setResponseHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
+        for (int port : ports) {
+            try (Socket server = new Socket("localhost", port);
+                    OutputStream os = server.getOutputStream();
+                    PrintWriter pw = new PrintWriter(os);
+                    InputStream is = server.getInputStream()) {
 
-        /*Perform byte transfer*/
-        try (Socket server = new Socket("localhost", files.get(fileName).stream().findAny().get());
-                PrintWriter pw = new PrintWriter(server.getOutputStream());
-                InputStream is = server.getInputStream()) {
-            pw.println(Protocol.DOWNLOAD);
-            pw.println(fileName);
-            pw.flush();
-            Protocol.transferBytes(is, ec.getResponseOutputStream());
-            fc.responseComplete();
-        } catch (IOException ex) {
-            Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
-        }
-    }
+                /*Protocol*/
+                os.write(Protocol.DOWNLOAD);
+                pw.println(fileName);
+                pw.flush();
 
-    public Part getFile() {
-        return file;
-    }
+                /*Check if file exists, 1 if present, 0 if otherwise*/
+                int reply = is.read();
+                if (reply == 1) {
 
-    public Set<String> getFiles() {
-        return files.keySet();
-    }
+                    /*Response header*/
+                    FacesContext fc = FacesContext.getCurrentInstance();
+                    ExternalContext ec = fc.getExternalContext();
+                    ec.responseReset();
+                    ec.setResponseContentType(ec.getMimeType(fileName));
+                    ec.setResponseHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
 
-    public Map<Integer, FileServer> getServers() {
-        return servers;
-    }
-
-    public void setFile(Part file) {
-        this.file = file;
-    }
-
-    public void startServer(Integer port) {
-        try {
-            FileServer fileServer = new FileServer(port);
-
-            /*Spawn threads to start file servers*/
-            pool.execute(fileServer);
-
-            servers.put(port, fileServer);
-            System.err.println("File Server " + port + " was started.");
-        } catch (IOException ex) {
-            Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
-        }
-    }
-
-    public void stop(Integer port) {
-        try {
-            servers.get(port).stopServer();
-        } catch (IOException ex) {
-            Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
+                    /*Write bytes*/
+                    Protocol.transferBytes(is, ec.getResponseOutputStream());
+                    fc.responseComplete();
+                    break;
+                }
+            } catch (IOException ex) {
+                Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
+            }
         }
     }
 
@@ -151,74 +132,92 @@ public class GatewayServer implements Serializable {
      * Uploads the selected file to 2/3 of servers.
      */
     public void upload() {
-        int limit = Math.floorDiv(NUM_SERV * 2, 3);
+        String filename = file.getSubmittedFileName();
+        long amount = Math.floorDiv((long) NUM_SERV * 2, (long) 3);
 
-        /*First 2/3 servers seen*/
-        for (Integer port : servers.keySet()) {
+        // From a list of servers
+        Observable.from(servers)
+                // Synchronously filter through them by checking if they respond
+                .filter(s -> {
+                    try {
+                        Socket dest = s.connect();
+                        Protocol.ping(dest);
+                        int response = Protocol.readNumber(dest);
+                        return response == Protocol.PING_RESPONSE_ALIVE;
+                    } catch (SocketException e) {
+                        Logger.getLogger(GatewayServer.class.getName()).log(Level.INFO, "Could not connect to " + s, e);
+                    } catch (IOException ex) {
+                        Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                    return false;
+                })
+                // Get only the amount
+                .take((int) amount)
+                // And that number should update
+                .subscribe(fileServer -> {
+                    try (Socket dest = fileServer.connect();
+                            InputStream inputStream = file.getInputStream()) {
 
-            /*Update the list*/
-            String filename = file.getSubmittedFileName();
-            addFile(filename, port);
+                        Protocol.write(dest, Protocol.UPLOAD);
 
-            /*Connect to server*/
-            try (OutputStream os = new Socket("localhost", port).getOutputStream();
-                    PrintWriter pw = new PrintWriter(os);
-                    InputStream is = file.getInputStream()) {
-                pw.println(Protocol.UPLOAD);
-                pw.println(filename);
-                pw.flush();
-                Protocol.transferBytes(is, os);
-            } catch (IOException ex) {
-                Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
-            }
+                        Protocol.write(dest, filename);
 
-            /*Exit*/
-            if (--limit <= 0) {
-                break;
-            }
-        }
+                        Protocol.transferBytes(inputStream, dest.getOutputStream());
+
+                        files.add(filename);
+                    } catch (SocketException e) {
+                        Logger.getLogger(GatewayServer.class.getName()).log(Level.INFO, "Could not connect to " + fileServer, e);
+                    } catch (IOException ex) {
+                        Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+
+                });
     }
 
-    public void killServer(Integer port) {
-        FileServer fileServer = getServers().get(port);
-        try {
-            fileServer.stop();
-            System.err.println("File Server " + port + " was shut down.");
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+    public Part getFile() {
+        return file;
     }
 
-    private void addFile(String file, Integer port) {
-        if (files.containsKey(file)) {
-            files.get(file).add(port);
-        } else {
-            HashSet<Integer> hashSet = new HashSet<>();
-            files.put(file, hashSet);
-            hashSet.add(port);
-        }
+    public Set<String> getFiles() {
+        return files;
     }
 
-    public ArrayList<String> filesOfServer(Integer port) {
-        ArrayList<String> result = new ArrayList<>();
-        try {
-            files.keySet()
-                    .stream()
-                    .filter(p -> files.get(p).contains(port))
-                    .forEach(result::add);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return result;
+    public FileServer[] getServers() {
+        return servers;
     }
-    
-    public boolean isServerAlive(Integer port){
-        try {
-            FileServer fileServer = servers.get(port);
-            return fileServer.isServerAlive();
-        }catch(Exception e){
-            e.printStackTrace();
-        }
-        return false;
+
+    public void setFile(Part file) {
+        this.file = file;
     }
+
+    public void killServer(int port) {
+        Arrays.stream(servers)
+                .filter(s -> s.getPort() == port)
+                .collect(Collectors.toSet())
+                .forEach(s -> {
+                    try {
+                        s.stop();
+
+                    } catch (IOException ex) {
+                        Logger.getLogger(GatewayServer.class
+                                .getName()).log(Level.SEVERE, null, ex);
+                    }
+                });
+    }
+
+    public void startServer(int port) {
+        Arrays.stream(servers)
+                .filter(s -> s.getPort() == port)
+                .collect(Collectors.toSet())
+                .forEach(s -> {
+                    try {
+                        s.start();
+
+                    } catch (IOException ex) {
+                        Logger.getLogger(GatewayServer.class
+                                .getName()).log(Level.SEVERE, null, ex);
+                    }
+                });
+    }
+
 }
