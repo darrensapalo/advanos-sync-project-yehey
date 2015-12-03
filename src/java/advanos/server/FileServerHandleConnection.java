@@ -7,10 +7,8 @@ package advanos.server;
 
 import advanos.Protocol;
 import java.io.BufferedInputStream;
-import java.io.BufferedReader;
 import java.io.DataInputStream;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.net.Socket;
 import java.util.Set;
 

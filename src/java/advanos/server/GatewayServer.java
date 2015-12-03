@@ -2,6 +2,8 @@ package advanos.server;
 
 import advanos.Protocol;
 import java.io.BufferedReader;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -92,16 +94,17 @@ public class GatewayServer implements Serializable {
         for (int port : ports) {
             try (Socket server = new Socket("localhost", port);
                     OutputStream os = server.getOutputStream();
-                    PrintWriter pw = new PrintWriter(os);
-                    InputStream is = server.getInputStream()) {
+                    InputStream is = server.getInputStream();
+                    DataOutputStream dos = new DataOutputStream(os);
+                    DataInputStream dis = new DataInputStream(is)) {
 
                 /*Protocol*/
-                os.write(Protocol.DOWNLOAD);
-                pw.println(fileName);
-                pw.flush();
+                dos.writeInt(Protocol.DOWNLOAD);
+                dos.writeUTF(fileName);
+                dos.flush();
 
                 /*Check if file exists, 1 if present, 0 if otherwise*/
-                int reply = is.read();
+                int reply = dis.readInt();
                 if (reply == 1) {
 
                     /*Response header*/
@@ -172,6 +175,7 @@ public class GatewayServer implements Serializable {
                         Protocol.transferBytes(inputStream, dest.getOutputStream());
 
                         files.add(filename);
+                        System.out.println("File " + filename + " added.");
                     } catch (ConnectException e) {
                         Logger.getLogger(GatewayServer.class.getName()).log(Level.INFO, "Could not connect to {0}", fileServer);
                     } catch (IOException ex) {
