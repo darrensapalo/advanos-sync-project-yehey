@@ -205,7 +205,9 @@ public class ReplicationService extends Thread {
                     // Go back to all the alive servers
                     .flatMap(f -> {
                         System.out.println("Returning to alive servers to begin distributing");
-                        return aliveServers;
+                        return AliveServersObserver.create(connectionInfos()).map(fg -> {
+                            return connections.get(fg.getPort());
+                        });
                     })
                     // determine which alive servers don't have the file
                     .filter(s -> {

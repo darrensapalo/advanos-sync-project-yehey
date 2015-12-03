@@ -25,11 +25,10 @@ public class AliveServersObserver {
         return Observable.from(infos)
                 // Get all the alive servers
                 .filter(c -> {
-                    try {
-                        Socket socket = Protocol.connect(c);
+                    try (Socket socket = Protocol.connect(c)){
+                        
                         Protocol.ping(socket);
                         boolean isAlive = Protocol.readNumber(socket) == Protocol.RESPONSE_PING_ALIVE;
-                        socket.close();
                         return isAlive;
                     } catch (ConnectException ex) {
                         return false;
