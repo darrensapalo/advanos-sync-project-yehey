@@ -241,6 +241,7 @@ public class GatewayServer implements Serializable {
                         Protocol.transferBytes(inputStream, dest.getOutputStream());
 
                         files.add(filename);
+                        System.out.println("File " + filename + " added.");
                     } catch (ConnectException e) {
 
                     } catch (IOException ex) {
