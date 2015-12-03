@@ -174,7 +174,10 @@ public class Protocol {
                 sendFileBytes(dest, fileInDirectory);
             }
             return exists;
-        } catch (IOException ex) {
+        }catch(SocketException e){
+            
+        }
+        catch (IOException ex) {
             Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
         }
         return false;
@@ -213,7 +216,10 @@ public class Protocol {
                 OutputStream os = dest.getOutputStream();) {
             long size = Files.size(file);
             transferBytes(fileSelected, os);
-        } catch (IOException ex) {
+        } catch(SocketException e){
+            
+        }
+        catch (IOException ex) {
             Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
