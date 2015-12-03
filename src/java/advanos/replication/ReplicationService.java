@@ -215,7 +215,7 @@ public class ReplicationService extends Thread {
                     })
                     .retry()
                     // Determine how many remaining servers are needed to replicate, and take that many
-                    .take(aliveServers.count().toBlocking().first())
+                    .take(Protocol.computeReplicationAmount(Protocol.NUMBER_OF_SERVERS))
                     // send files to those servers
                     .subscribe(s -> {
                         System.out.println("Distributing file " + filename + " to " + s.getFileServerInfo());

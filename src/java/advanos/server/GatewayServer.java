@@ -139,7 +139,7 @@ public class GatewayServer implements Serializable {
                 })
                 .collect(Collectors.toSet());
 
-        Integer amount = Protocol.NUMBER_OF_SERVERS;//.computeReplicationAmount(AliveServersObserver.create(infos).count().toBlocking().first());
+        Integer amount = Protocol.computeReplicationAmount(Protocol.NUMBER_OF_SERVERS); //AliveServersObserver.create(infos).count().toBlocking().first());
 
         // From a list of servers
         Observable.from(servers)
