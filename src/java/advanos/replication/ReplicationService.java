@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -101,6 +102,7 @@ public class ReplicationService extends Thread {
                 // For each server connection, query their file lists
                 .map(c -> {
                     try {
+                        System.out.println("Getting file list of " + c.getFileServerInfo());
                         Socket socket = c.getSocket();
                         Protocol.write(socket, Protocol.FILE_LIST);
                         Set<String> readFileList = Protocol.readFileList(socket);

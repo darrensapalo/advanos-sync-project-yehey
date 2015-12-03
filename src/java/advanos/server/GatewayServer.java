@@ -26,6 +26,7 @@ import javax.faces.context.ExternalContext;
 import javax.faces.context.FacesContext;
 import javax.servlet.http.Part;
 import rx.Observable;
+import rx.schedulers.Schedulers;
 
 /**
  *
@@ -154,6 +155,7 @@ public class GatewayServer implements Serializable {
                 })
                 // Get only the amount
                 .take(amount)
+                .subscribeOn(Schedulers.newThread())
                 // And that number should update
                 .subscribe(fileServer -> {
                     try (Socket dest = fileServer.connect();
