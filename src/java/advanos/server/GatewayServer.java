@@ -1,16 +1,15 @@
 package advanos.server;
 
 import advanos.Protocol;
-import advanos.replication.observers.AliveServersObserver;
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.ObjectInputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.Serializable;
 import java.net.ConnectException;
 import java.net.Socket;
-import java.net.SocketException;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
@@ -19,7 +18,6 @@ import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import javax.faces.bean.ApplicationScoped;
@@ -65,13 +63,10 @@ public class GatewayServer implements Serializable {
         for (int i = 0; i < Protocol.NUMBER_OF_SERVERS; i++) {
             try (Socket connection = new Socket("localhost", ports[i]);
                     OutputStream out = connection.getOutputStream()) {
-                out.write(Protocol.FILE_LIST);
-                out.flush();
-                try (ObjectInputStream ois = new ObjectInputStream(connection.getInputStream())) {
-                    Set<String> fileNames = (Set<String>) ois.readObject();
-                    files.addAll(fileNames);
-                }
-            } catch (ClassNotFoundException | IOException ex) {
+                Protocol.write(connection, Protocol.FILE_LIST);
+                Set<String> fileList = Protocol.readFileList(connection);
+                files.addAll(fileList);
+            } catch (IOException ex) {
                 Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
             }
         }
@@ -159,7 +154,6 @@ public class GatewayServer implements Serializable {
                 })
                 // Get only the amount
                 .take(amount)
-                
                 // And that number should update
                 .subscribe(fileServer -> {
                     try (Socket dest = fileServer.connect();
@@ -168,6 +162,10 @@ public class GatewayServer implements Serializable {
                         Protocol.write(dest, Protocol.UPLOAD);
 
                         Protocol.write(dest, filename);
+
+                        long filesize = file.getSize();
+                        System.out.println("meta data size: " + filesize);
+                        Protocol.write(dest, filesize);
 
                         Protocol.transferBytes(inputStream, dest.getOutputStream());
 

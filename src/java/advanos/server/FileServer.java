@@ -1,8 +1,10 @@
 package advanos.server;
 
 import advanos.Protocol;
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -11,6 +13,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -21,6 +25,9 @@ public final class FileServer implements Runnable {
     private ServerSocket server;
     private final int port;
     private final Path directory;
+    private final ExecutorService pool;
+    
+    
 
     public FileServer(int port) throws IOException {
         this.port = port;
@@ -35,6 +42,8 @@ public final class FileServer implements Runnable {
         information.setPort(port);
         information.setFileList(getFileList());
 
+        pool = Executors.newFixedThreadPool(2);
+        
         start();
     }
 
@@ -53,56 +62,15 @@ public final class FileServer implements Runnable {
     @Override
     public void run() {
 
+        if (true) {
+            System.out.println("Server " + port + " was turned on");
+        }
+
         try {
             while (true) {
-                try (Socket dest = server.accept();
-                        
-                        InputStream inputStream = dest.getInputStream()) {
-                    int input = inputStream.read();
-                    System.out.println("Received a connection with request " + input);
-                    
-                    switch (input) {
-                        case Protocol.SERVER_INFO:
-                            Protocol.sendObject(dest, information);
-                            break;
-
-                        case Protocol.FILE_LIST:
-                            Protocol.sendObject(dest, getFileList());
-                            break;
-
-                        case Protocol.UPLOAD:
-                            Protocol.uploadFile(inputStream, information.getDirectory());
-
-                            break;
-                        case Protocol.DOWNLOAD:
-                            Protocol.sendRequestedFile(dest, information);
-                            break;
-
-                        /*Sends all files of this server starting with a set of file names*/
-                        case Protocol.COPY_ALL:
-                            Protocol.copyAll(dest, information);
-                            break;
-
-                        /*Receives all files of this server starting with a set of file names*/
-                        case Protocol.PASTE_ALL:
-                            Protocol.pasteAll(dest, information);
-                            break;
-
-                        /* Responds with 0 if there are no issues */
-                        case Protocol.PING:
-                            Protocol.write(dest, 0);
-                            break;
-
-                        case Protocol.HAS_FILE:
-                            String fileName = Protocol.readLine(dest);
-                            if (getFileList().contains(fileName)) {
-                                Protocol.write(dest, Protocol.RESPONSE_HAS_FILE);
-                            } else {
-                                Protocol.write(dest, 0);
-                            }
-                            break;
-                    }
-                }
+                Socket dest = server.accept();
+                pool.execute(new FileServerHandleConnection(dest, information, getFileList()));
+                
             }
         } catch (SocketException ex) {
             //Socket is closed

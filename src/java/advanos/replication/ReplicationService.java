@@ -3,8 +3,11 @@ package advanos.replication;
 import advanos.Protocol;
 import advanos.replication.observers.AliveServersObserver;
 import advanos.server.FileServerInfo;
+import java.io.BufferedReader;
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
@@ -185,7 +188,12 @@ public class ReplicationService extends Thread {
                             System.out.println("Reading response...");
                             if (Protocol.readNumber(socket) == Protocol.RESPONSE_HAS_FILE) {
                                 System.out.println("Server has the file.");
-                                Protocol.receiveFile(socket.getInputStream(), directory, filename);
+
+                                DataInputStream dis = new DataInputStream(socket.getInputStream());
+                                long size = dis.readLong();
+
+                                Protocol.receiveFile(dis, directory, filename, size);
+
                                 System.out.println("Downloaded file " + filename + " successfully");
                                 return true;
                             } else {
@@ -209,7 +217,7 @@ public class ReplicationService extends Thread {
                             Protocol.write(socket, filename);
                             return Protocol.readNumber(socket) != Protocol.RESPONSE_HAS_FILE;
                         } catch (IOException e) {
-                            
+
                         }
                         return false;
                     })
@@ -222,6 +230,7 @@ public class ReplicationService extends Thread {
                         try (Socket socket = s.getSocket()) {
                             Protocol.write(socket, Protocol.UPLOAD);
                             Protocol.write(socket, filename);
+                            Protocol.write(socket, Files.size(directory.resolve(filename)));
                             Protocol.sendFileBytes(socket, directory.resolve(filename));
                         } catch (IOException ex) {
                             Logger.getLogger(ReplicationService.class.getName()).log(Level.SEVERE, null, ex);

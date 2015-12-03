@@ -4,6 +4,11 @@ import advanos.server.FileServerInfo;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.EOFException;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -11,19 +16,19 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
-import java.net.ConnectException;
 import java.net.Socket;
+import java.net.SocketException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.HashSet;
+import java.util.Scanner;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.faces.context.ExternalContext;
 import javax.faces.context.FacesContext;
 import rx.Observable;
-import rx.Observer;
 
 public class Protocol {
 
@@ -52,18 +57,25 @@ public class Protocol {
      * Sends bytes from one stream to another
      *
      * @param inputStream stream to read data from
-     * @param outputStream stream to write data to
+     * @param outputStream output stream to write data to
      * @throws IOException
      */
     public static void transferBytes(InputStream inputStream, OutputStream outputStream) throws IOException {
-        try (BufferedInputStream bis = new BufferedInputStream(inputStream);
-                BufferedOutputStream bos = new BufferedOutputStream(outputStream)) {
-            byte[] buffer = new byte[1024];
+        try {
+            BufferedInputStream bis = new BufferedInputStream(inputStream);
+            DataInputStream dis = new DataInputStream(bis);
+            DataOutputStream dos = new DataOutputStream(outputStream);
+            byte[] buffer = new byte[8192];
+            int total = 0;
             int length;
-            while ((length = bis.read(buffer)) > 0) {
-                bos.write(buffer, 0, length);
+            while ((length = dis.read(buffer, 0, buffer.length)) > 0) {
+                dos.write(buffer, 0, length);
+                total += length;
             }
-            bos.flush();
+            System.out.println("Transfered a total of " + total + " bytes");
+            dos.flush();
+        } catch (EOFException e) {
+            Logger.getGlobal().log(Level.INFO, "Transfering bytes was successful.");
         }
     }
 
@@ -89,14 +101,17 @@ public class Protocol {
      * Once it has the filename, it begins reading the bytes sent as a file and
      * overwrites the data received.
      *
-     * @param inputStream The input stream that receiving the data
-     * @param information the information describing the file server
+     * @param br
+     * @param dest the socket to read data from
+     * @param directory the directory where the file should be saved
      */
-    public static void uploadFile(InputStream inputStream, Path directory) {
+    public static void uploadFile(DataInputStream br, Socket dest, Path directory) {
         try {
-            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
-            String fileName = bufferedReader.readLine();
-            Files.copy(inputStream, directory.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
+            String fileName = Protocol.readLine(br);
+            System.out.println("Uploading file " + fileName);
+            long filesize = br.readLong();
+            System.out.println("Supposed to receive " + filesize + " bytes");
+            receiveFile(br, directory, fileName, filesize);
         } catch (IOException ex) {
             Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -109,11 +124,21 @@ public class Protocol {
      * @param inputStream The input stream that receiving the data
      * @param directory The base folder where it should be stored
      * @param filename the name of the file
+     * @param filesize
      */
-    public static void receiveFile(InputStream inputStream, Path directory, String filename) {
+    public static void receiveFile(DataInputStream inputStream, Path directory, String filename, long filesize) {
         try {
-            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
-            Files.copy(inputStream, directory.resolve(filename), StandardCopyOption.REPLACE_EXISTING);
+            FileOutputStream outputStream = new FileOutputStream(directory.resolve(filename).toFile());
+            BufferedOutputStream bos = new BufferedOutputStream(outputStream);
+
+            int length = 0, total = 0;
+            byte[] buffer = new byte[8192];
+            while ((length = inputStream.read(buffer, 0, buffer.length)) != -1) {
+                bos.write(buffer, 0, length);
+                total += length;
+            }
+            bos.close();
+            System.out.println("Uploaded a total of " + total + " bytes");
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -129,32 +154,30 @@ public class Protocol {
      * If the file server does have the specified file, this responds with 1 and
      * then sends the file data as bytes.
      *
+     * @param dis
      * @param dest The destination socket
      * @param information the information of the file server
      * @return true if the server described by information has the file
      */
-    public static boolean sendRequestedFile(Socket dest, FileServerInfo information) {
-        boolean exists = false;
+    public static boolean sendRequestedFile(DataInputStream dis, Socket dest, FileServerInfo information) {
         try {
-            OutputStream os = dest.getOutputStream();
-            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(dest.getInputStream()));
-
-            String fileNameOfRequestedFile = bufferedReader.readLine();
+            boolean exists;
+            String fileNameOfRequestedFile = readLine(dis);
             Path fileInDirectory = information.getDirectory().resolve(fileNameOfRequestedFile);
             exists = Files.exists(fileInDirectory);
+            write(dest, exists ? 1 : 0);
 
-            /*Send 1 if file exists, 0 if not*/
-            os.write(exists ? 1 : 0);
-            os.flush();
-
-            /*Perform downloading if file exists*/
             if (exists) {
+                long size = Files.size(fileInDirectory);
+                write(dest, size);
+
                 sendFileBytes(dest, fileInDirectory);
             }
+            return exists;
         } catch (IOException ex) {
             Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
         }
-        return exists;
+        return false;
     }
 
     /**
@@ -166,23 +189,18 @@ public class Protocol {
      * @return 1 if available, 0 otherwise
      */
     public static boolean fileExists(Socket dest, FileServerInfo information) {
-        boolean exists = false;
         try {
-            OutputStream os = dest.getOutputStream();
-            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(dest.getInputStream()));
-
-            String fileName = bufferedReader.readLine();
+            boolean exists;
+            BufferedReader br = new BufferedReader(new InputStreamReader(dest.getInputStream()));
+            String fileName = br.readLine();
             Path fileInDirectory = information.getDirectory().resolve(fileName);
             exists = Files.exists(fileInDirectory);
-
-            /*Send 1 if file exists, 0 if not*/
-            os.write(exists ? 1 : 0);
-            os.flush();
-
+            write(dest, exists ? 1 : 0);
+            return exists;
         } catch (IOException ex) {
             Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
         }
-        return exists;
+        return false;
     }
 
     /**
@@ -192,7 +210,8 @@ public class Protocol {
      */
     public static void sendFileBytes(Socket dest, Path file) {
         try (InputStream fileSelected = Files.newInputStream(file);
-                OutputStream os = dest.getOutputStream();){
+                OutputStream os = dest.getOutputStream();) {
+            long size = Files.size(file);
             transferBytes(fileSelected, os);
         } catch (IOException ex) {
             Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
@@ -220,7 +239,6 @@ public class Protocol {
      * the file server connected to the socket
      *
      * @param from the socket to read from
-     * @param information the information of the file server
      * @return the file names read from the socket
      */
     public static Set<String> readFileList(Socket from) {
@@ -255,23 +273,6 @@ public class Protocol {
     }
 
     /**
-     * Writes a number to a socket
-     *
-     * @param dest the destination socket
-     * @param number the number to be written
-     */
-    public static void write(Socket dest, int number) {
-        try {
-            OutputStream os = dest.getOutputStream();
-            PrintWriter pw = new PrintWriter(os);
-            pw.write(number);
-            pw.flush();
-        } catch (IOException ex) {
-            Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
-        }
-    }
-
-    /**
      * Writes text and ends it with a new line
      *
      * @param dest
@@ -280,9 +281,9 @@ public class Protocol {
     public static void write(Socket dest, String text) {
         try {
             OutputStream os = dest.getOutputStream();
-            PrintWriter pw = new PrintWriter(os);
-            pw.println(text);
-            pw.flush();
+            DataOutputStream dos = new DataOutputStream(os);
+            dos.writeUTF(text);
+            dos.flush();
         } catch (IOException ex) {
             Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -304,17 +305,21 @@ public class Protocol {
      * @return the integer that was read
      */
     public static Integer readNumber(Socket from) {
-        return (Integer) Observable.create(subscriber -> {
-            try {
-                InputStream is = from.getInputStream();
-                subscriber.onNext(is.read());
-            } catch (Exception e) {
-                subscriber.onError(e);
-            }
 
-        }).first().toBlocking().first();
+        Integer i = null;
+        try {
+
+            InputStream is = from.getInputStream();
+            DataInputStream dis = new DataInputStream(is);
+            return dis.readInt();
+        } catch (SocketException e) {
+            Logger.getGlobal().log(Level.INFO, "There was some issues reading a number. " + e.getMessage(), e);
+        } catch (Exception e) {
+            Logger.getGlobal().log(Level.INFO, "There was some issues reading a number. " + e.getMessage(), e);
+        }
+        return i;
     }
-
+    
     /**
      * Creates a download dialog box for the gateway server
      *
@@ -335,23 +340,6 @@ public class Protocol {
         fc.responseComplete();
     }
 
-    /**
-     * Reads a line from the socket
-     *
-     * @param dest the socket to read from
-     * @return the first line it can read
-     */
-    public static String readLine(Socket dest) {
-        try {
-            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(dest.getInputStream()));
-
-            return bufferedReader.readLine();
-        } catch (IOException ex) {
-            Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
-        }
-        return null;
-    }
-
     public static Socket connect(FileServerInfo info) throws IOException {
         return new Socket("localhost", info.getPort());
     }
@@ -360,4 +348,36 @@ public class Protocol {
     public static Integer computeReplicationAmount(Integer aliveServers) {
         return Math.floorDiv(aliveServers * 2, 3);
     }
+
+    public static void write(Socket dest, int i) {
+        try {
+            OutputStream os = dest.getOutputStream();
+            DataOutputStream dos = new DataOutputStream(os);
+            dos.writeInt(i);
+            dos.flush();
+        } catch (IOException ex) {
+            Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+
+    public static void write(Socket dest, long i) {
+        try {
+            OutputStream os = dest.getOutputStream();
+            DataOutputStream dos = new DataOutputStream(os);
+            dos.writeLong(i);
+            dos.flush();
+        } catch (IOException ex) {
+            Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+
+    public static String readLine(DataInputStream br) {
+        try {
+            return br.readUTF();
+        } catch (IOException ex) {
+            Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        return null;
+    }
+
 }
