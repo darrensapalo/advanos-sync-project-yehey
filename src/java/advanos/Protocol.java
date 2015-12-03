@@ -313,9 +313,9 @@ public class Protocol {
             DataInputStream dis = new DataInputStream(is);
             return dis.readInt();
         } catch (SocketException e) {
-            Logger.getGlobal().log(Level.INFO, "There was some issues reading a number. " + e.getMessage(), e);
+            
         } catch (Exception e) {
-            Logger.getGlobal().log(Level.INFO, "There was some issues reading a number. " + e.getMessage(), e);
+            
         }
         return i;
     }

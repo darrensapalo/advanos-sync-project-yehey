@@ -3,14 +3,22 @@ package advanos.replication;
 import advanos.Protocol;
 import advanos.replication.observers.AliveServersObserver;
 import advanos.server.FileServerInfo;
+import java.io.BufferedReader;
 import java.io.DataInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
+import java.net.ConnectException;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -77,7 +85,7 @@ public class ReplicationService extends Thread {
     }
 
     public static void main(String[] args) {
-
+        System.out.println("Starting replication service");
         ReplicationService.instance().start();
 
     }
@@ -99,6 +107,7 @@ public class ReplicationService extends Thread {
                         Protocol.write(socket, Protocol.FILE_LIST);
                         Set<String> readFileList = Protocol.readFileList(socket);
                         socket.close();
+                        System.out.println("Successfully read " + readFileList.size() + " files of " + c.getFileServerInfo());
                         return readFileList;
                     } catch (IOException ex) {
                         Logger.getLogger(ReplicationService.class.getName()).log(Level.SEVERE, null, ex);
@@ -134,7 +143,7 @@ public class ReplicationService extends Thread {
                 // Filter each entry 
                 .filter(entry -> {
                     // If the entry has less instances than the number of alive servers, then you need to replicate                    
-                    return entry.getValue() < Protocol.computeReplicationAmount(aliveFileServers.count().toBlocking().first());
+                    return entry.getValue() < Protocol.computeReplicationAmount(Protocol.NUMBER_OF_SERVERS);
                 })
                 .retry()
                 .map(f -> {
@@ -202,10 +211,12 @@ public class ReplicationService extends Thread {
                     .retry()
                     // Go back to all the alive servers
                     .flatMap(f -> {
+                        System.out.println("Returning to alive servers to begin distributing");
                         return aliveServers;
                     })
                     // determine which alive servers don't have the file
                     .filter(s -> {
+                        
                         try (Socket socket = s.getSocket()) {
                             Protocol.write(socket, Protocol.HAS_FILE);
                             Protocol.write(socket, filename);
