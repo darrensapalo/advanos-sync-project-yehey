@@ -103,7 +103,8 @@ public class GatewayServer implements Serializable {
                 .collect(Collectors.toSet());
 
         Observable<FileServerInfo> aliveServers = AliveServersObserver.create(infos);
-
+        final FacesContext fc = FacesContext.getCurrentInstance();
+        final ExternalContext ec = fc.getExternalContext();
         aliveServers
                 .filter(
                         f -> {
@@ -148,22 +149,19 @@ public class GatewayServer implements Serializable {
 
                                     System.out.println("file size: " + size);
                                     /*Response header*/
-                                    FacesContext fc = FacesContext.getCurrentInstance();
-                                    ExternalContext ec = fc.getExternalContext();
 
                                     try {
+
                                         ec.responseReset();
+                                        ec.setResponseContentType(ec.getMimeType(filename));
+                                        ec.setResponseHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+                                        System.out.println("Headers written");
+                                        /*Write bytes*/
+                                        Protocol.transferBytes(dis, ec.getResponseOutputStream());
+                                        fc.responseComplete();
                                     } catch (IllegalStateException e) {
 
                                     }
-
-                                    ec.setResponseContentType(ec.getMimeType(filename));
-                                    ec.setResponseHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
-
-                                    System.out.println("Headers written");
-                                    /*Write bytes*/
-                                    Protocol.transferBytes(dis, ec.getResponseOutputStream());
-                                    fc.responseComplete();
 
                                     System.out.println("Downloaded file " + filename + " successfully");
                                 } else {
@@ -185,7 +183,7 @@ public class GatewayServer implements Serializable {
                         },
                         e -> {
                             System.out.println("Something bad happened during download. " + e.getMessage());
-
+                            e.printStackTrace();
                         });
 
     }
@@ -225,7 +223,7 @@ public class GatewayServer implements Serializable {
                 .take(amount)
                 .subscribeOn(Schedulers.newThread())
                 // And that number should update
-                
+
                 .subscribe(fileServer -> {
                     try (Socket dest = fileServer.connect();
                             InputStream inputStream = file.getInputStream()) {
