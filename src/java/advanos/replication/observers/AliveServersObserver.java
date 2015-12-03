@@ -32,7 +32,7 @@ public class AliveServersObserver {
                         socket.close();
                         return isAlive;
                     } catch (ConnectException ex) {
-                        Logger.getLogger(AliveServersObserver.class.getName()).log(Level.INFO, "Socket {0} is closed.", c.getPort());
+                        return false;
                     } catch (IOException ex) {
                         Logger.getLogger(AliveServersObserver.class.getName()).log(Level.SEVERE, null, ex);
                     }
