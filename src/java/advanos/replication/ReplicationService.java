@@ -2,23 +2,16 @@ package advanos.replication;
 
 import advanos.Protocol;
 import advanos.replication.observers.AliveServersObserver;
+import advanos.replication.observers.RetryWithDelay;
 import advanos.server.FileServerInfo;
-import java.io.BufferedReader;
 import java.io.DataInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.OutputStream;
-import java.net.ConnectException;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -114,7 +107,7 @@ public class ReplicationService extends Thread {
                     }
                     return new HashSet<String>();
                 })
-                .retry()
+                .retryWhen(new RetryWithDelay(3, 2000))
                 // Accumulate all of these file lists into a hashmap that counts all the references of each file
                 .reduce(new HashMap<String, Integer>(), (hashmap, fileList) -> {
 
@@ -145,7 +138,7 @@ public class ReplicationService extends Thread {
                     // If the entry has less instances than the number of alive servers, then you need to replicate                    
                     return entry.getValue() < Protocol.computeReplicationAmount(Protocol.NUMBER_OF_SERVERS);
                 })
-                .retry()
+                .retryWhen(new RetryWithDelay(3, 2000))
                 .map(f -> {
                     return f.getKey();
                 });
@@ -179,7 +172,7 @@ public class ReplicationService extends Thread {
                         }
                         return hasFile;
                     })
-                    .retry()
+                    .retryWhen(new RetryWithDelay(3, 2000))
                     // Download file once
                     .first(s -> {
                         try (Socket socket = s.getSocket()) {
@@ -208,7 +201,7 @@ public class ReplicationService extends Thread {
                         }
                         return false;
                     })
-                    .retry()
+                    .retryWhen(new RetryWithDelay(3, 2000))
                     // Go back to all the alive servers
                     .flatMap(f -> {
                         System.out.println("Returning to alive servers to begin distributing");
@@ -216,7 +209,7 @@ public class ReplicationService extends Thread {
                     })
                     // determine which alive servers don't have the file
                     .filter(s -> {
-                        
+
                         try (Socket socket = s.getSocket()) {
                             Protocol.write(socket, Protocol.HAS_FILE);
                             Protocol.write(socket, filename);
@@ -226,7 +219,7 @@ public class ReplicationService extends Thread {
                         }
                         return false;
                     })
-                    .retry()
+                    .retryWhen(new RetryWithDelay(3, 2000))
                     // Determine how many remaining servers are needed to replicate, and take that many
                     .take(Protocol.computeReplicationAmount(Protocol.NUMBER_OF_SERVERS))
                     // send files to those servers

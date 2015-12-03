@@ -1,7 +1,11 @@
 package advanos.server;
 
 import advanos.Protocol;
+import advanos.replication.ReplicationService;
+import advanos.replication.observers.AliveServersObserver;
+import advanos.replication.observers.RetryWithDelay;
 import java.io.BufferedReader;
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -26,6 +30,7 @@ import javax.faces.context.ExternalContext;
 import javax.faces.context.FacesContext;
 import javax.servlet.http.Part;
 import rx.Observable;
+import rx.Observer;
 import rx.schedulers.Schedulers;
 
 /**
@@ -88,38 +93,101 @@ public class GatewayServer implements Serializable {
         pool.shutdown();
     }
 
-    public void download(String fileName) {
-        for (int port : ports) {
-            try (Socket server = new Socket("localhost", port);
-                    OutputStream os = server.getOutputStream();
-                    PrintWriter pw = new PrintWriter(os);
-                    InputStream is = server.getInputStream()) {
+    public void download(String filename) {
 
-                /*Protocol*/
-                os.write(Protocol.DOWNLOAD);
-                pw.println(fileName);
-                pw.flush();
+        Set<FileServerInfo> infos = Arrays
+                .stream(servers)
+                .map(f -> {
+                    return f.getInformation();
+                })
+                .collect(Collectors.toSet());
 
-                /*Check if file exists, 1 if present, 0 if otherwise*/
-                int reply = is.read();
-                if (reply == 1) {
+        Observable<FileServerInfo> aliveServers = AliveServersObserver.create(infos);
 
-                    /*Response header*/
-                    FacesContext fc = FacesContext.getCurrentInstance();
-                    ExternalContext ec = fc.getExternalContext();
-                    ec.responseReset();
-                    ec.setResponseContentType(ec.getMimeType(fileName));
-                    ec.setResponseHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
+        aliveServers
+                .filter(
+                        f -> {
+                            try (Socket connect = Protocol.connect(f)) {
+                                Protocol.ping(connect);
+                                Integer readNumber = Protocol.readNumber(connect);
+                                return readNumber == Protocol.RESPONSE_PING_ALIVE;
+                            } catch (IOException ex) {
+                                Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+                            return false;
+                        })
+                .retryWhen(new RetryWithDelay(3, 2000))
+                .firstOrDefault(null,
+                        f -> {
+                            try (Socket connect = Protocol.connect(f)) {
+                                Protocol.write(connect, Protocol.HAS_FILE);
+                                Protocol.write(connect, filename);
+                                return Protocol.readNumber(connect) == Protocol.RESPONSE_HAS_FILE;
+                            } catch (IOException ex) {
 
-                    /*Write bytes*/
-                    Protocol.transferBytes(is, ec.getResponseOutputStream());
-                    fc.responseComplete();
-                    break;
-                }
-            } catch (IOException ex) {
-                Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        }
+                            }
+                            return false;
+                        })
+                .map(
+                        s -> {
+                            if (s == null) {
+                                throw new NullPointerException("There are no available servers.");
+                            }
+                            try (Socket socket = Protocol.connect(s)) {
+                                System.out.println("Downloading file once from " + s);
+                                Protocol.write(socket, Protocol.DOWNLOAD);
+                                System.out.println("Sending file name...");
+                                Protocol.write(socket, filename);
+
+                                System.out.println("Reading response...");
+                                if (Protocol.readNumber(socket) == Protocol.RESPONSE_HAS_FILE) {
+                                    System.out.println("Server has the file.");
+
+                                    DataInputStream dis = new DataInputStream(socket.getInputStream());
+                                    long size = dis.readLong();
+
+                                    System.out.println("file size: " + size);
+                                    /*Response header*/
+                                    FacesContext fc = FacesContext.getCurrentInstance();
+                                    ExternalContext ec = fc.getExternalContext();
+
+                                    try {
+                                        ec.responseReset();
+                                    } catch (IllegalStateException e) {
+
+                                    }
+
+                                    ec.setResponseContentType(ec.getMimeType(filename));
+                                    ec.setResponseHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+
+                                    System.out.println("Headers written");
+                                    /*Write bytes*/
+                                    Protocol.transferBytes(dis, ec.getResponseOutputStream());
+                                    fc.responseComplete();
+
+                                    System.out.println("Downloaded file " + filename + " successfully");
+                                } else {
+                                    throw new NullPointerException("The server does not have the file.");
+                                }
+                            } catch (IOException ex) {
+                                Logger.getLogger(ReplicationService.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+                            return s;
+                        })
+                .subscribeOn(Schedulers.newThread())
+                .subscribe(
+                        s -> {
+                            if (s == null) {
+                                System.out.println("All our servers are down as of the moment. Sorry!");
+                            } else {
+                                System.out.println("Successfully downloaded the file");
+                            }
+                        },
+                        e -> {
+                            System.out.println("Something bad happened during download. " + e.getMessage());
+
+                        });
+
     }
 
     /**
@@ -157,6 +225,7 @@ public class GatewayServer implements Serializable {
                 .take(amount)
                 .subscribeOn(Schedulers.newThread())
                 // And that number should update
+                
                 .subscribe(fileServer -> {
                     try (Socket dest = fileServer.connect();
                             InputStream inputStream = file.getInputStream()) {
@@ -173,7 +242,7 @@ public class GatewayServer implements Serializable {
 
                         files.add(filename);
                     } catch (ConnectException e) {
-                        Logger.getLogger(GatewayServer.class.getName()).log(Level.INFO, "Could not connect to {0}", fileServer);
+
                     } catch (IOException ex) {
                         Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
                     }

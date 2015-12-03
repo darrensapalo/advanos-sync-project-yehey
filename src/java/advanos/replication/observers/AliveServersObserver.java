@@ -38,6 +38,6 @@ public class AliveServersObserver {
                     }
                     return false;
                 })
-                .retry();
+                .retryWhen(new RetryWithDelay(3, 2000));
     }
 }
