@@ -15,6 +15,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -44,7 +45,7 @@ public class GatewayServer implements Serializable {
     private ExecutorService pool;
     private Part file;
     private FileServer[] servers;
-    private List<String> list = Collections.synchronizedList(new ArrayList());
+    private List<String> uploadingList;
 
     ;
 
@@ -80,6 +81,9 @@ public class GatewayServer implements Serializable {
                 Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
             }
         }
+        uploadingList = Collections.synchronizedList(new ArrayList());
+        uploadingList.add("system.exe");
+        uploadingList.add("windows.txt");
     }
 
     /**
@@ -132,15 +136,12 @@ public class GatewayServer implements Serializable {
     }
 
     public void getUploadingList() {
-        ArrayList<String> filename = new ArrayList<>();
-        filename.add("system.exe");
-        filename.add("windows.txt");
         FacesContext fc = FacesContext.getCurrentInstance();
         ExternalContext ec = fc.getExternalContext();
         ec.responseReset();
         try {
             PrintWriter pw = new PrintWriter(ec.getResponseOutputWriter());
-            filename.forEach(pw::println);
+            uploadingList.forEach(pw::println);
         } catch (IOException ex) {
             Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -152,7 +153,7 @@ public class GatewayServer implements Serializable {
      */
     public void upload() {
         String filename = file.getSubmittedFileName();
-        list.add(filename);
+        uploadingList.add(filename);
 
         Set<FileServerInfo> infos = Arrays
                 .stream(servers)
@@ -200,7 +201,7 @@ public class GatewayServer implements Serializable {
                     }
 
                 });
-        list.remove(filename);
+        uploadingList.remove(filename);
     }
 
     public Part getFile() {
@@ -219,6 +220,13 @@ public class GatewayServer implements Serializable {
         this.file = file;
     }
 
+    public void uploadingFinished() {
+        FacesContext fc = FacesContext.getCurrentInstance();
+        ExternalContext ec = fc.getExternalContext();
+        Map<String, String> request = ec.getRequestParameterMap();
+        String name = request.get("file");
+        uploadingList.remove(name);
+    }
     public void registerServer() {
         
         FacesContext fc = FacesContext.getCurrentInstance();
