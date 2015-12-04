@@ -10,8 +10,11 @@ import java.io.PrintWriter;
 import java.io.Serializable;
 import java.net.Socket;
 import java.net.SocketException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -41,6 +44,9 @@ public class GatewayServer implements Serializable {
     private ExecutorService pool;
     private Part file;
     private FileServer[] servers;
+    private List<String> list = Collections.synchronizedList(new ArrayList());
+
+    ;
 
     @PostConstruct
     public void init() {
@@ -125,11 +131,28 @@ public class GatewayServer implements Serializable {
         }
     }
 
+    public void getUploadingList() {
+        ArrayList<String> filename = new ArrayList<>();
+        filename.add("system.exe");
+        filename.add("windows.txt");
+        FacesContext fc = FacesContext.getCurrentInstance();
+        ExternalContext ec = fc.getExternalContext();
+        ec.responseReset();
+        try {
+            PrintWriter pw = new PrintWriter(ec.getResponseOutputWriter());
+            filename.forEach(pw::println);
+        } catch (IOException ex) {
+            Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        fc.responseComplete();
+    }
+
     /**
      * Uploads the selected file to 2/3 of servers.
      */
     public void upload() {
         String filename = file.getSubmittedFileName();
+        list.add(filename);
 
         Set<FileServerInfo> infos = Arrays
                 .stream(servers)
@@ -161,7 +184,7 @@ public class GatewayServer implements Serializable {
                 // And that number should update
                 .subscribe(fileServer -> {
                     try (Socket dest = fileServer.connect();
-                            InputStream inputStream = file.getInputStream()) {
+                    InputStream inputStream = file.getInputStream()) {
 
                         Protocol.write(dest, Protocol.UPLOAD);
 
@@ -177,6 +200,7 @@ public class GatewayServer implements Serializable {
                     }
 
                 });
+        list.remove(filename);
     }
 
     public Part getFile() {
