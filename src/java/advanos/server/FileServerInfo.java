@@ -41,8 +41,7 @@ public class FileServerInfo {
     public int getPort() {
         return port;
     }
-    
-    
+
     @Override
     public String toString(){
         return "File server " + port;

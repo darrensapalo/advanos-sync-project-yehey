@@ -10,6 +10,7 @@ import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -90,6 +91,12 @@ public class Protocol {
             BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
             String fileName = bufferedReader.readLine();
             Files.copy(inputStream, directory.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
+
+            /*Establish a URL connection to the gateway to notify that the file was uploded*/
+            URL gateway = new URL("http://localhost:8080/advanos-sync-project-yehey/faces/uploadingfinish.xhtml?file=" + fileName);
+            try (InputStream connect = gateway.openStream()) {
+                
+            }
         } catch (IOException ex) {
             Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
         }

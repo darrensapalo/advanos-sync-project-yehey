@@ -17,14 +17,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
 import javax.faces.bean.ApplicationScoped;
 import javax.faces.bean.ManagedBean;
 import javax.faces.context.ExternalContext;
@@ -42,30 +38,13 @@ public class GatewayServer implements Serializable {
 
     private int[] ports;
     private Set<String> files;
-    private ExecutorService pool;
     private Part file;
-    private FileServer[] servers;
     private List<String> uploadingList;
-
-    ;
 
     @PostConstruct
     public void init() {
         ports = new int[Protocol.NUMBER_OF_SERVERS];
         files = new HashSet<>();
-        pool = Executors.newFixedThreadPool(Protocol.NUMBER_OF_SERVERS);
-        servers = new FileServer[Protocol.NUMBER_OF_SERVERS];
-
-        /*Start all servers*/
-        for (int i = 0; i < Protocol.NUMBER_OF_SERVERS; i++) {
-            ports[i] = Protocol.START_PORT + i;
-            try {
-                servers[i] = new FileServer(ports[i]);
-                pool.execute(servers[i]);
-            } catch (IOException ex) {
-                Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        }
 
         /*Receive file list from servers*/
         for (int i = 0; i < Protocol.NUMBER_OF_SERVERS; i++) {
@@ -84,21 +63,6 @@ public class GatewayServer implements Serializable {
         uploadingList = Collections.synchronizedList(new ArrayList());
         uploadingList.add("system.exe");
         uploadingList.add("windows.txt");
-    }
-
-    /**
-     * Close all file servers and shutdown thread pool.
-     */
-    @PreDestroy
-    public void cleanup() {
-        Arrays.stream(servers).forEach(server -> {
-            try {
-                server.stop();
-            } catch (IOException ex) {
-                Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        });
-        pool.shutdown();
     }
 
     public void download(String fileName) {
@@ -212,10 +176,6 @@ public class GatewayServer implements Serializable {
         return files;
     }
 
-    public FileServer[] getServers() {
-        return servers;
-    }
-
     public void setFile(Part file) {
         this.file = file;
     }
@@ -241,34 +201,4 @@ public class GatewayServer implements Serializable {
         }
         fc.responseComplete();
     }
-    public void killServer(int port) {
-        Arrays.stream(servers)
-                .filter(s -> s.getPort() == port)
-                .collect(Collectors.toSet())
-                .forEach(s -> {
-                    try {
-                        s.stop();
-
-                    } catch (IOException ex) {
-                        Logger.getLogger(GatewayServer.class
-                                .getName()).log(Level.SEVERE, null, ex);
-                    }
-                });
-    }
-
-    public void startServer(int port) {
-        Arrays.stream(servers)
-                .filter(s -> s.getPort() == port)
-                .collect(Collectors.toSet())
-                .forEach(s -> {
-                    try {
-                        s.start();
-
-                    } catch (IOException ex) {
-                        Logger.getLogger(GatewayServer.class
-                                .getName()).log(Level.SEVERE, null, ex);
-                    }
-                });
-    }
-
 }

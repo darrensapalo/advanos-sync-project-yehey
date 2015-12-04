@@ -15,7 +15,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-public final class FileServer implements Runnable {
+public final class FileServer {
 
     private FileServerInfo information;
     private ServerSocket server;
@@ -34,84 +34,76 @@ public final class FileServer implements Runnable {
         information = new FileServerInfo();
         information.setPort(port);
         information.setFileList(getFileList());
-
-        start();
     }
 
     public boolean isClosed() {
         return server.isClosed();
     }
 
-    public void start() throws IOException {
+    public Runnable start() throws IOException {
         server = new ServerSocket(port);
+        return () -> {
+            try {
+                while (true) {
+                    try (Socket dest = server.accept();
+                            InputStream inputStream = dest.getInputStream()) {
+                        int input = inputStream.read();
+                        System.out.println("Received a connection with request " + input);
+
+                        switch (input) {
+                            case Protocol.SERVER_INFO:
+                                Protocol.sendObject(dest, information);
+                                break;
+
+                            case Protocol.FILE_LIST:
+                                Protocol.sendObject(dest, getFileList());
+                                break;
+
+                            case Protocol.UPLOAD:
+                                Protocol.uploadFile(inputStream, information.getDirectory());
+
+                                break;
+                            case Protocol.DOWNLOAD:
+                                Protocol.sendRequestedFile(dest, information);
+                                break;
+
+                            /*Sends all files of this server starting with a set of file names*/
+                            case Protocol.COPY_ALL:
+                                Protocol.copyAll(dest, information);
+                                break;
+
+                            /*Receives all files of this server starting with a set of file names*/
+                            case Protocol.PASTE_ALL:
+                                Protocol.pasteAll(dest, information);
+                                break;
+
+                            /* Responds with 0 if there are no issues */
+                            case Protocol.PING:
+                                Protocol.write(dest, 0);
+                                break;
+
+                            case Protocol.HAS_FILE:
+                                String fileName = Protocol.readLine(dest);
+                                if (getFileList().contains(fileName)) {
+                                    Protocol.write(dest, Protocol.RESPONSE_HAS_FILE);
+                                } else {
+                                    Protocol.write(dest, 0);
+                                }
+                                break;
+                        }
+                    }
+                }
+            } catch (SocketException ex) {
+                //Socket is closed
+                System.out.println(ex + " " + port);
+            } catch (IOException ex) {
+                Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        };
     }
 
     public void stop() throws IOException {
         server.close();
-    }
-
-    @Override
-    public void run() {
-
-        try {
-            while (true) {
-                try (Socket dest = server.accept();
-                        
-                        InputStream inputStream = dest.getInputStream()) {
-                    int input = inputStream.read();
-                    System.out.println("Received a connection with request " + input);
-                    
-                    switch (input) {
-                        case Protocol.SERVER_INFO:
-                            Protocol.sendObject(dest, information);
-                            break;
-
-                        case Protocol.FILE_LIST:
-                            Protocol.sendObject(dest, getFileList());
-                            break;
-
-                        case Protocol.UPLOAD:
-                            Protocol.uploadFile(inputStream, information.getDirectory());
-                            
-
-                            break;
-                        case Protocol.DOWNLOAD:
-                            Protocol.sendRequestedFile(dest, information);
-                            break;
-
-                        /*Sends all files of this server starting with a set of file names*/
-                        case Protocol.COPY_ALL:
-                            Protocol.copyAll(dest, information);
-                            break;
-
-                        /*Receives all files of this server starting with a set of file names*/
-                        case Protocol.PASTE_ALL:
-                            Protocol.pasteAll(dest, information);
-                            break;
-
-                        /* Responds with 0 if there are no issues */
-                        case Protocol.PING:
-                            Protocol.write(dest, 0);
-                            break;
-
-                        case Protocol.HAS_FILE:
-                            String fileName = Protocol.readLine(dest);
-                            if (getFileList().contains(fileName)) {
-                                Protocol.write(dest, Protocol.RESPONSE_HAS_FILE);
-                            } else {
-                                Protocol.write(dest, 0);
-                            }
-                            break;
-                    }
-                }
-            }
-        } catch (SocketException ex) {
-            //Socket is closed
-            System.out.println(ex + " " + port);
-        } catch (IOException ex) {
-            Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
-        }
-
     }
 
     /**
