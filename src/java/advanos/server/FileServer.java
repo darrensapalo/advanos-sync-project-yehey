@@ -72,6 +72,7 @@ public final class FileServer implements Runnable {
 
                         case Protocol.UPLOAD:
                             Protocol.uploadFile(inputStream, information.getDirectory());
+                            
 
                             break;
                         case Protocol.DOWNLOAD:

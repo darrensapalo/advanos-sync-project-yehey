@@ -219,6 +219,20 @@ public class GatewayServer implements Serializable {
         this.file = file;
     }
 
+    public void registerServer() {
+        
+        FacesContext fc = FacesContext.getCurrentInstance();
+        ExternalContext ec = fc.getExternalContext();
+        ec.responseReset();
+        try {
+            PrintWriter pw = new PrintWriter(ec.getResponseOutputWriter());
+            pw.println(ec.getRequestServerName());
+            pw.println(ec.getRequestParameterMap());
+        } catch (IOException ex) {
+            Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        fc.responseComplete();
+    }
     public void killServer(int port) {
         Arrays.stream(servers)
                 .filter(s -> s.getPort() == port)
