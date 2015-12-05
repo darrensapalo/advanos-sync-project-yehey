@@ -1,7 +1,6 @@
 package advanos.server;
 
 import advanos.Protocol;
-import advanos.replication.observers.AliveServersObserver;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
@@ -11,7 +10,6 @@ import java.io.Serializable;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -19,7 +17,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 import javax.annotation.PostConstruct;
 import javax.faces.bean.ApplicationScoped;
 import javax.faces.bean.ManagedBean;
@@ -29,26 +26,38 @@ import javax.servlet.http.Part;
 import rx.Observable;
 
 /**
+ * Controller for file upload and download.
  *
- * @author 1
+ * @author CSC611M G01
  */
 @ManagedBean
 @ApplicationScoped
 public class GatewayServer implements Serializable {
 
-    private int[] ports;
     private Set<String> files;
-    private Part file;
     private List<String> uploadingList;
+    private Part file;
+    private Set<ServerInfo> servers;
 
+    /**
+     * Retrieves file list from known file servers.
+     */
     @PostConstruct
     public void init() {
-        ports = new int[Protocol.NUMBER_OF_SERVERS];
         files = new HashSet<>();
 
+        /*Initialize file servers to be connected*/
+        servers = new HashSet<>();
+        servers.add(new ServerInfo("localhost", 1099));
+        servers.add(new ServerInfo("localhost", 1100));
+        servers.add(new ServerInfo("localhost", 1101));
+        servers.add(new ServerInfo("localhost", 1102));
+        servers.add(new ServerInfo("localhost", 1103));
+        servers.add(new ServerInfo("localhost", 1104));
+
         /*Receive file list from servers*/
-        for (int i = 0; i < Protocol.NUMBER_OF_SERVERS; i++) {
-            try (Socket connection = new Socket("localhost", ports[i]);
+        servers.forEach(server -> {
+            try (Socket connection = server.getSocket();
                     OutputStream out = connection.getOutputStream()) {
                 out.write(Protocol.FILE_LIST);
                 out.flush();
@@ -59,18 +68,24 @@ public class GatewayServer implements Serializable {
             } catch (ClassNotFoundException | IOException ex) {
                 Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
             }
-        }
+        });
+
+        /*Sample file upload list*/
         uploadingList = Collections.synchronizedList(new ArrayList());
         uploadingList.add("system.exe");
         uploadingList.add("windows.txt");
     }
 
+    /**
+     * Downloads a file given its file name.
+     * @param fileName The name of a file to be downloaded
+     */
     public void download(String fileName) {
-        for (int port : ports) {
-            try (Socket server = new Socket("localhost", port);
-                    OutputStream os = server.getOutputStream();
+        for (ServerInfo server : servers) {
+            try (Socket connection = server.getSocket();
+                    OutputStream os = connection.getOutputStream();
                     PrintWriter pw = new PrintWriter(os);
-                    InputStream is = server.getInputStream()) {
+                    InputStream is = connection.getInputStream()) {
 
                 /*Protocol*/
                 os.write(Protocol.DOWNLOAD);
@@ -99,6 +114,10 @@ public class GatewayServer implements Serializable {
         }
     }
 
+    /**
+     * Retrieves a list of file currently uploading. It is used by the
+     * replication service
+     */
     public void getUploadingList() {
         FacesContext fc = FacesContext.getCurrentInstance();
         ExternalContext ec = fc.getExternalContext();
@@ -118,22 +137,14 @@ public class GatewayServer implements Serializable {
     public void upload() {
         String filename = file.getSubmittedFileName();
         uploadingList.add(filename);
-
-        Set<FileServerInfo> infos = Arrays
-                .stream(servers)
-                .map(f -> {
-                    return f.getInformation();
-                })
-                .collect(Collectors.toSet());
-
-        Integer amount = Protocol.computeReplicationAmount(AliveServersObserver.create(infos).count().toBlocking().first());
+        Integer amount = Protocol.computeReplicationAmount(Protocol.NUMBER_OF_SERVERS);
 
         // From a list of servers
         Observable.from(servers)
                 // Synchronously filter through them by checking if they respond
                 .filter(s -> {
                     try {
-                        Socket dest = s.connect();
+                        Socket dest = s.getSocket();
                         Protocol.ping(dest);
                         int response = Protocol.readNumber(dest);
                         return response == Protocol.RESPONSE_PING_ALIVE;
@@ -148,7 +159,7 @@ public class GatewayServer implements Serializable {
                 .take(amount)
                 // And that number should update
                 .subscribe(fileServer -> {
-                    try (Socket dest = fileServer.connect();
+                    try (Socket dest = fileServer.getSocket();
                     InputStream inputStream = file.getInputStream()) {
 
                         Protocol.write(dest, Protocol.UPLOAD);
@@ -168,18 +179,35 @@ public class GatewayServer implements Serializable {
         uploadingList.remove(filename);
     }
 
+    /**
+     * Gets the file which is selected for upload. Used in the web page.
+     * @return 
+     */
     public Part getFile() {
         return file;
     }
 
+    /**
+     * Gets all files that can be downloaded.
+     * @return All files that can be downloaded
+     */
     public Set<String> getFiles() {
         return files;
     }
 
+    /**
+     * Sets the file to be uploaded. Used in the web page.
+     * @param file 
+     */
     public void setFile(Part file) {
         this.file = file;
     }
 
+    /**
+     * Notifies this gate way that a file has already been uploaded.
+     * It removes the specified file on the request parameter from the
+     * upload file list.
+     */
     public void uploadingFinished() {
         FacesContext fc = FacesContext.getCurrentInstance();
         ExternalContext ec = fc.getExternalContext();
@@ -187,18 +215,13 @@ public class GatewayServer implements Serializable {
         String name = request.get("file");
         uploadingList.remove(name);
     }
+
+    /**
+     * Registers a file server to this gateway
+     */
     public void registerServer() {
-        
         FacesContext fc = FacesContext.getCurrentInstance();
         ExternalContext ec = fc.getExternalContext();
-        ec.responseReset();
-        try {
-            PrintWriter pw = new PrintWriter(ec.getResponseOutputWriter());
-            pw.println(ec.getRequestServerName());
-            pw.println(ec.getRequestParameterMap());
-        } catch (IOException ex) {
-            Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
-        }
-        fc.responseComplete();
+        servers.add(new ServerInfo(ec.getRequestServerName(), ec.getRequestServerPort()));
     }
 }

@@ -1,5 +1,9 @@
 package advanos.server;
 
+import java.io.IOException;
+import java.net.Socket;
+import java.util.Objects;
+
 public class ServerInfo {
 
     private final String ipAddress;
@@ -10,11 +14,27 @@ public class ServerInfo {
         this.port = port;
     }
 
-    public String getIPAddress() {
-        return ipAddress;
+    @Override
+    public int hashCode() {
+        int hash = 3;
+        hash = 19 * hash + Objects.hashCode(this.ipAddress);
+        hash = 19 * hash + this.port;
+        return hash;
     }
 
-    public int getPort() {
-        return port;
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj instanceof ServerInfo) {
+            final ServerInfo other = (ServerInfo) obj;
+            return Objects.equals(ipAddress, other.ipAddress) && port == other.port;
+        }
+        return false;
+    }
+
+    public Socket getSocket() throws IOException {
+        return new Socket(ipAddress, port);
     }
 }

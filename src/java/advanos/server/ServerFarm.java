@@ -8,28 +8,45 @@ import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+/**
+ * Provides simulation for file servers hosted in one machine.
+ *
+ * @author CSC611M G01
+ */
 public class ServerFarm {
 
-    private ExecutorService pool;
-    private FileServer[] servers;
+    /**
+     * Thread pool for the file server to run into
+     */
+    private final ExecutorService pool;
 
-    public ServerFarm() {
+    /**
+     * File servers
+     */
+    private final FileServer[] servers;
+
+    /**
+     * Generates all file servers and provide the thread pool for these file
+     * servers to run into.
+     *
+     * @throws java.io.IOException If there is an connection problem with
+     * file servers
+     */
+    public ServerFarm() throws IOException {
         pool = Executors.newFixedThreadPool(Protocol.NUMBER_OF_SERVERS);
         servers = new FileServer[Protocol.NUMBER_OF_SERVERS];
 
         /*Start all servers*/
         for (int i = 0; i < Protocol.NUMBER_OF_SERVERS; i++) {
             int port = Protocol.START_PORT + i;
-            try {
-                servers[i] = new FileServer(port);
-                start(servers[i]);
-            } catch (IOException ex) {
-                Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
-            }
+            servers[i] = new FileServer(port);
+            start(servers[i]);
         }
-
     }
 
+    /**
+     * Close all file servers and shutdown thread pool.
+     */
     public void close() {
         Arrays.stream(servers).forEach(server -> {
             try {
@@ -41,14 +58,20 @@ public class ServerFarm {
         pool.shutdown();
     }
 
+    /**
+     * Starts the selected file server and putting it on the thread pool.
+     *
+     * @param server The file server being selected
+     */
     public final void start(FileServer server) {
-        try {
-            pool.execute(server.start());
-        } catch (IOException ex) {
-            Logger.getLogger(ServerFarm.class.getName()).log(Level.SEVERE, null, ex);
-        }
+        pool.execute(server);
     }
 
+    /**
+     * Gets all servers.
+     *
+     * @return All servers
+     */
     public FileServer[] getServers() {
         return servers;
     }
