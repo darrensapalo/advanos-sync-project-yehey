@@ -15,20 +15,18 @@ import java.io.InputStreamReader;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
-import java.io.PrintWriter;
 import java.net.Socket;
 import java.net.SocketException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.HashSet;
-import java.util.Scanner;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.faces.context.ExternalContext;
 import javax.faces.context.FacesContext;
-import rx.Observable;
+import javax.ws.rs.HEAD;
 
 public class Protocol {
 
@@ -60,7 +58,7 @@ public class Protocol {
      * @param outputStream output stream to write data to
      * @throws IOException
      */
-    public static void transferBytes(InputStream inputStream, OutputStream outputStream) throws IOException {
+    public static int transferBytes(InputStream inputStream, OutputStream outputStream) throws IOException {
         try {
             BufferedInputStream bis = new BufferedInputStream(inputStream);
             DataInputStream dis = new DataInputStream(bis);
@@ -72,11 +70,12 @@ public class Protocol {
                 dos.write(buffer, 0, length);
                 total += length;
             }
-            System.out.println("Transfered a total of " + total + " bytes");
             dos.flush();
+            return total;
         } catch (EOFException e) {
             Logger.getGlobal().log(Level.INFO, "Transfering bytes was successful.");
         }
+        return -1;
     }
 
     /**
@@ -96,6 +95,7 @@ public class Protocol {
     }
 
     /**
+<<<<<<< HEAD
      * Initially, this call reads the filename of the file to be received.
      *
      * Once it has the filename, it begins reading the bytes sent as a file and
@@ -211,16 +211,11 @@ public class Protocol {
      * @param dest The destination socket
      * @param file The file to be sent
      */
-    public static void sendFileBytes(Socket dest, Path file) {
+    public static void sendFileBytes(Socket dest, Path file) throws IOException {
         try (InputStream fileSelected = Files.newInputStream(file);
                 OutputStream os = dest.getOutputStream();) {
             long size = Files.size(file);
             transferBytes(fileSelected, os);
-        } catch(SocketException e){
-            
-        }
-        catch (IOException ex) {
-            Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
 
@@ -236,7 +231,11 @@ public class Protocol {
 
         list.forEach(filename -> {
             Path fileInDirectory = information.getDirectory().resolve(filename);
-            sendFileBytes(dest, fileInDirectory);
+            try {
+                sendFileBytes(dest, fileInDirectory);
+            } catch (IOException ex) {
+                Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
+            }
         });
     }
 

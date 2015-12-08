@@ -44,7 +44,7 @@
 
             
             <div id="servers">
-                <c:forEach var="server" items="#{gatewayServer.servers}">
+                <c:forEach var="server" items="#{serverController.farm.servers}">
                     <div class="panel panel-default">
                         <!-- Default panel contents -->
                         <div class="panel-heading">
@@ -76,8 +76,8 @@
 
                             <div class="btn-group btn-group-justified" role="group" >
                                 <h:form>
-                                    <h:commandButton class="btn btn-warning" action="#{gatewayServer.killServer(server.port)}" value="Kill server" /> &nbsp;
-                                    <h:commandButton class="btn btn-success" action="#{gatewayServer.startServer(server.port)}" value="Start server" />
+                                    <h:commandButton class="btn btn-warning" action="#{server.stop}" value="Kill server" /> &nbsp;
+                                    <h:commandButton class="btn btn-success" action="#{serverController.farm.start(server)}" value="Start server" />
                                 </h:form>
                             </div>
 
