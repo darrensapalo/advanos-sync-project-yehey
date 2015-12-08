@@ -89,25 +89,26 @@ public class ReplicationService extends Thread {
     private Observable<String> analyzeFileHealth(Observable<FileServerInfo> aliveFileServers) {
         Observable<ArrayList<String>> currentlyUploading = Observable.create(f -> {
             /*Inform the gateway that this server is alive*/
+            ArrayList<String> result = new ArrayList<>();
             try {
                 URL gateway = new URL(Protocol.GATEWAY_URL + "uploadinglist.xhtml");
                 try (InputStream is = gateway.openStream();
                         BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
                     String readLine;
-                    ArrayList<String> result = new ArrayList<>();
                     while ((readLine = br.readLine()) != null && readLine.isEmpty() == false) {
                         result.add(readLine);
                         System.out.println("Gateway currently uploading " + readLine);
                     }
 
-                    f.onNext(result);
-                    f.onCompleted();
                 } catch (FileNotFoundException e) {
                     System.out.println("Could not connect to gateway.");
                 }
             } catch (IOException ex) {
                 Logger.getLogger(ReplicationService.class.getName()).log(Level.SEVERE, null, ex);
             }
+            f.onNext(result);
+            f.onCompleted();
+
         });
 
         return aliveFileServers

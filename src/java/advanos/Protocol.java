@@ -19,6 +19,7 @@ import java.io.OutputStream;
 import java.net.Socket;
 import java.net.SocketException;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -29,6 +30,8 @@ import java.util.logging.Logger;
 import javax.faces.context.ExternalContext;
 import javax.faces.context.FacesContext;
 import javax.ws.rs.HEAD;
+import rx.Observable;
+import rx.Observer;
 
 public class Protocol {
 
@@ -52,7 +55,7 @@ public class Protocol {
     public static final int NUMBER_OF_SERVERS = 6;
 
     public static final String GATEWAY_URL = "http://localhost:8080/Project/faces/";
-    
+
     /**
      * Sends bytes from one stream to another
      *
@@ -108,6 +111,7 @@ public class Protocol {
      * @param directory the directory where the file should be saved
      */
     public static void uploadFile(DataInputStream br, Socket dest, Path directory) {
+
         try {
             String fileName = Protocol.readLine(br);
             System.out.println("Uploading file " + fileName);
@@ -115,15 +119,29 @@ public class Protocol {
             System.out.println("Supposed to receive " + filesize + " bytes");
             receiveFile(br, directory, fileName, filesize);
 
-            /*Establish a URL connection to the gateway to notify that the file was uploded*/
-            URL gateway = new URL(GATEWAY_URL + "/uploadingfinish.xhtml?file=" + fileName);
-            try (InputStream connect = gateway.openStream()) {
-                System.out.println("Informed gateway about uploaded file.");
-            } catch (FileNotFoundException e) {
-                System.out.println("Gateway is offline.");
-            }
-        } catch (IOException ex) {
-            Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
+            Observable.create(f -> {
+                try {
+                    System.out.println("Marking file as finished uploaded");
+                    /*Establish a URL connection to the gateway to notify that the file was uploded*/
+                    URL gateway = new URL(GATEWAY_URL + "uploadingfinish.xhtml?file=" + URLEncoder.encode(fileName, "UTF-8"));
+                    try (InputStream connect = gateway.openStream()) {
+                        System.out.println("Informed gateway about uploaded file.");
+                        f.onNext(true);
+                        return;
+                    } catch (FileNotFoundException e) {
+                        System.out.println("Gateway is offline.");
+
+                    }
+
+                } catch (IOException ex) {
+                    Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                f.onNext(false);
+            }).retry().subscribe(f -> {
+                System.out.println("was able to finish uploading " + fileName + ": " + f);
+            });
+        } catch (Exception e) {
+
         }
     }
 

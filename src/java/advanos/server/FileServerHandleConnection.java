@@ -38,7 +38,6 @@ public class FileServerHandleConnection extends Thread {
             DataInputStream dis = new DataInputStream(bis);
 
             int input = dis.readInt();
-            System.out.println("Received a connection with request " + input);
 
             switch (input) {
                 case Protocol.SERVER_INFO:

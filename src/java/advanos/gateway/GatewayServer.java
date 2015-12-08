@@ -67,8 +67,6 @@ public class GatewayServer implements Serializable {
 
         /*Sample file upload list*/
         uploadingList = Collections.synchronizedList(new ArrayList());
-        uploadingList.add("system.exe");
-        uploadingList.add("windows.txt");
     }
 
     public void download(String filename) {
@@ -81,19 +79,25 @@ public class GatewayServer implements Serializable {
                     try (Socket connect = f.getSocket()) {
                         Protocol.ping(connect);
                         Integer readNumber = Protocol.readNumber(connect);
-                        return readNumber == Protocol.RESPONSE_PING_ALIVE;
+                        boolean bool = readNumber == Protocol.RESPONSE_PING_ALIVE;
+                        System.out.println("Server " + f + " is online? " + bool);
+                        return bool;
                     } catch (IOException ex) {
                         Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
                     }
+                    System.out.println("Server " + f + " is offline");
                     return false;
                 })
                 .retryWhen(new RetryWithDelay(3, 2000))
                 .firstOrDefault(null,
                         f -> {
+                            System.out.println("Attempting to see if " + f + " has the file");
                             try (Socket connect = f.getSocket()) {
                                 Protocol.write(connect, Protocol.HAS_FILE);
                                 Protocol.write(connect, filename);
-                                return Protocol.readNumber(connect) == Protocol.RESPONSE_HAS_FILE;
+                                boolean bool = Protocol.readNumber(connect) == Protocol.RESPONSE_HAS_FILE;
+                                System.out.println("Server " + f + " has the file?" + bool);
+                                return bool;
                             } catch (IOException ex) {
 
                             }
@@ -120,18 +124,13 @@ public class GatewayServer implements Serializable {
                                     System.out.println("file size: " + size);
                                     /*Response header*/
 
-                                    try {
-
-                                        ec.responseReset();
-                                        ec.setResponseContentType(ec.getMimeType(filename));
-                                        ec.setResponseHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
-                                        System.out.println("Headers written");
-                                        /*Write bytes*/
-                                        Protocol.transferBytes(dis, ec.getResponseOutputStream());
-                                        fc.responseComplete();
-                                    } catch (IllegalStateException e) {
-
-                                    }
+                                    ec.responseReset();
+                                    ec.setResponseContentType(ec.getMimeType(filename));
+                                    ec.setResponseHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+                                    System.out.println("Headers written");
+                                    /*Write bytes*/
+                                    Protocol.transferBytes(dis, ec.getResponseOutputStream());
+                                    fc.responseComplete();
 
                                     System.out.println("Downloaded file " + filename + " successfully");
                                 } else {
@@ -142,7 +141,6 @@ public class GatewayServer implements Serializable {
                             }
                             return s;
                         })
-                .subscribeOn(Schedulers.newThread())
                 .subscribe(
                         s -> {
                             if (s == null) {
@@ -265,6 +263,7 @@ public class GatewayServer implements Serializable {
         Map<String, String> request = ec.getRequestParameterMap();
         String name = request.get("file");
         uploadingList.remove(name);
+        System.out.println(name + " was removed from the uploading list.");
     }
 
     /**
