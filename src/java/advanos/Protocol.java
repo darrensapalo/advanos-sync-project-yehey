@@ -8,6 +8,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -17,6 +18,7 @@ import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.SocketException;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -33,8 +35,6 @@ public class Protocol {
     public static final int FILE_LIST = 1;
     public static final int UPLOAD = 2;
     public static final int DOWNLOAD = 3;
-    public static final int COPY_ALL = 4;
-    public static final int PASTE_ALL = 5;
     public static final int SERVER_INFO = 6;
 
     public static final int PING = 7;
@@ -51,6 +51,8 @@ public class Protocol {
      */
     public static final int NUMBER_OF_SERVERS = 6;
 
+    public static final String GATEWAY_URL = "http://localhost:8080/Project/faces/";
+    
     /**
      * Sends bytes from one stream to another
      *
@@ -95,8 +97,8 @@ public class Protocol {
     }
 
     /**
-<<<<<<< HEAD
-     * Initially, this call reads the filename of the file to be received.
+     * <<<<<<< HEAD Initially, this call reads the filename of the file to be
+     * received.
      *
      * Once it has the filename, it begins reading the bytes sent as a file and
      * overwrites the data received.
@@ -112,6 +114,14 @@ public class Protocol {
             long filesize = br.readLong();
             System.out.println("Supposed to receive " + filesize + " bytes");
             receiveFile(br, directory, fileName, filesize);
+
+            /*Establish a URL connection to the gateway to notify that the file was uploded*/
+            URL gateway = new URL(GATEWAY_URL + "/uploadingfinish.xhtml?file=" + fileName);
+            try (InputStream connect = gateway.openStream()) {
+                System.out.println("Informed gateway about uploaded file.");
+            } catch (FileNotFoundException e) {
+                System.out.println("Gateway is offline.");
+            }
         } catch (IOException ex) {
             Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -174,10 +184,9 @@ public class Protocol {
                 sendFileBytes(dest, fileInDirectory);
             }
             return exists;
-        }catch(SocketException e){
-            
-        }
-        catch (IOException ex) {
+        } catch (SocketException e) {
+
+        } catch (IOException ex) {
             Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
         }
         return false;
@@ -217,26 +226,6 @@ public class Protocol {
             long size = Files.size(file);
             transferBytes(fileSelected, os);
         }
-    }
-
-    /**
-     * Copies all files from one server to a selected socket
-     *
-     * @param dest The destination socket
-     * @param information the information of the file server
-     */
-    public static void copyAll(Socket dest, FileServerInfo information) {
-        Set<String> list = information.getFileList();
-        sendObject(dest, list);
-
-        list.forEach(filename -> {
-            Path fileInDirectory = information.getDirectory().resolve(filename);
-            try {
-                sendFileBytes(dest, fileInDirectory);
-            } catch (IOException ex) {
-                Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        });
     }
 
     /**
@@ -318,13 +307,13 @@ public class Protocol {
             DataInputStream dis = new DataInputStream(is);
             return dis.readInt();
         } catch (SocketException e) {
-            
+
         } catch (Exception e) {
-            
+
         }
         return i;
     }
-    
+
     /**
      * Creates a download dialog box for the gateway server
      *
@@ -346,7 +335,7 @@ public class Protocol {
     }
 
     public static Socket connect(FileServerInfo info) throws IOException {
-        return new Socket("localhost", info.getPort());
+        return info.getSocket();
     }
 
     // todo: modify the condition

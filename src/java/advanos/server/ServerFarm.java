@@ -1,7 +1,9 @@
 package advanos.server;
 
 import advanos.Protocol;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -74,5 +76,46 @@ public class ServerFarm {
      */
     public FileServer[] getServers() {
         return servers;
+    }
+
+    public static void main(String[] args) {
+        try {
+            ServerFarm servers = new ServerFarm();
+            System.out.println("File servers initialized...");
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(System.in))) {
+                String input;
+                do {
+                    Thread.sleep(2000);
+                    System.out.println();
+
+                    /*Status of each port*/
+                    Arrays.stream(servers.servers).forEach(server -> System.out.println(server.getPort() + " " + (server.isClosed() ? "closed" : "open")));
+                    System.out.println("Syntax [stop|start] <port number> or \"exit\" to quit.");
+                    System.out.print("Enter input: ");    //stop 1099
+                    input = br.readLine();
+
+                    /*Get the file server based on the second input after "stop" or "start" keyword*/
+                    if (input != null && !"exit".equalsIgnoreCase(input)) {
+                        String[] token = input.split("\\s+");
+                        int port = Integer.parseInt(token[1]);
+                        FileServer server = Arrays.stream(servers.servers)
+                                .filter(fileServer -> fileServer.getPort() == port)
+                                .findAny()
+                                .get();
+
+                        /*Operation commands based on the first argument*/
+                        if ("stop".equalsIgnoreCase(token[0])) {
+                            server.stop();
+                        } else if ("start".equalsIgnoreCase(token[0])) {
+                            servers.pool.execute(server);
+                        }
+                    }
+                } while (input != null && !"exit".equalsIgnoreCase(input));
+            }
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> servers.close()));
+            System.out.println("Program exit.");
+        } catch (InterruptedException | IOException e) {
+            e.printStackTrace();
+        }
     }
 }

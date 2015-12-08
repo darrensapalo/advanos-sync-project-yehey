@@ -8,8 +8,10 @@ package advanos.server;
 import advanos.Protocol;
 import java.io.BufferedInputStream;
 import java.io.DataInputStream;
+import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.net.Socket;
+import java.net.URL;
 import java.util.Set;
 
 /**
@@ -53,16 +55,6 @@ public class FileServerHandleConnection extends Thread {
                     break;
                 case Protocol.DOWNLOAD:
                     Protocol.sendRequestedFile(dis, dest, information);
-                    break;
-
-                /*Sends all files of this server starting with a set of file names*/
-                case Protocol.COPY_ALL:
-                    Protocol.copyAll(dest, information);
-                    break;
-
-                /*Receives all files of this server starting with a set of file names*/
-                case Protocol.PASTE_ALL:
-                    Protocol.pasteAll(dest, information);
                     break;
 
                 /* Responds with 0 if there are no issues */

@@ -6,6 +6,7 @@ import advanos.replication.observers.AliveServersObserver;
 import advanos.replication.observers.RetryWithDelay;
 import advanos.server.FileServerInfo;
 import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
@@ -16,7 +17,6 @@ import java.net.ConnectException;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -24,7 +24,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 import javax.annotation.PostConstruct;
 import javax.faces.bean.ApplicationScoped;
 import javax.faces.bean.ManagedBean;
@@ -46,7 +45,7 @@ public class GatewayServer implements Serializable {
     private Set<String> files;
     private List<String> uploadingList;
     private Part file;
-    private Set<ServerInfo> servers;
+    private Set<FileServerInfo> servers;
 
     /**
      * Retrieves file list from known file servers.
@@ -57,12 +56,14 @@ public class GatewayServer implements Serializable {
 
         /*Initialize file servers to be connected*/
         servers = new HashSet<>();
-        servers.add(new ServerInfo("localhost", 1099));
-        servers.add(new ServerInfo("localhost", 1100));
-        servers.add(new ServerInfo("localhost", 1101));
-        servers.add(new ServerInfo("localhost", 1102));
-        servers.add(new ServerInfo("localhost", 1103));
-        servers.add(new ServerInfo("localhost", 1104));
+        servers.add(new FileServerInfo("localhost", 1099));
+        servers.add(new FileServerInfo("localhost", 1100));
+        servers.add(new FileServerInfo("localhost", 1101));
+        servers.add(new FileServerInfo("localhost", 1102));
+        servers.add(new FileServerInfo("localhost", 1103));
+        servers.add(new FileServerInfo("localhost", 1104));
+
+        servers.forEach(s -> registerServer(s));
 
         /*Sample file upload list*/
         uploadingList = Collections.synchronizedList(new ArrayList());
@@ -72,20 +73,20 @@ public class GatewayServer implements Serializable {
 
     public void download(String filename) {
 
-        Observable<ServerInfo> aliveServers = AliveServersObserver.create(servers);
+        Observable<FileServerInfo> aliveServers = AliveServersObserver.create(servers);
         final FacesContext fc = FacesContext.getCurrentInstance();
         final ExternalContext ec = fc.getExternalContext();
         aliveServers
                 .filter(f -> {
-                            try (Socket connect = f.getSocket()) {
-                                Protocol.ping(connect);
-                                Integer readNumber = Protocol.readNumber(connect);
-                                return readNumber == Protocol.RESPONSE_PING_ALIVE;
-                            } catch (IOException ex) {
-                                Logger.getLogger(advanos.server.GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
-                            }
-                            return false;
-                        })
+                    try (Socket connect = f.getSocket()) {
+                        Protocol.ping(connect);
+                        Integer readNumber = Protocol.readNumber(connect);
+                        return readNumber == Protocol.RESPONSE_PING_ALIVE;
+                    } catch (IOException ex) {
+                        Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                    return false;
+                })
                 .retryWhen(new RetryWithDelay(3, 2000))
                 .firstOrDefault(null,
                         f -> {
@@ -137,7 +138,7 @@ public class GatewayServer implements Serializable {
                                     throw new NullPointerException("The server does not have the file.");
                                 }
                             } catch (IOException ex) {
-                                Logger.getLogger(ReplicationService.class.getName()).log(Level.SEVERE, null, ex);
+                                Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
                             }
                             return s;
                         })
@@ -162,7 +163,6 @@ public class GatewayServer implements Serializable {
      */
     public void upload() {
         String filename = file.getSubmittedFileName();
-        Integer amount = Protocol.computeReplicationAmount(Protocol.NUMBER_OF_SERVERS); //AliveServersObserver.create(infos).count().toBlocking().first());
 
         // From a list of servers
         Observable.from(servers)
@@ -174,20 +174,20 @@ public class GatewayServer implements Serializable {
                         int response = Protocol.readNumber(dest);
                         return response == Protocol.RESPONSE_PING_ALIVE;
                     } catch (ConnectException e) {
-                        Logger.getLogger(advanos.server.GatewayServer.class.getName()).log(Level.INFO, "Could not connect to {0}", s);
+                        Logger.getLogger(GatewayServer.class.getName()).log(Level.INFO, "Could not connect to {0}", s);
                     } catch (IOException ex) {
-                        Logger.getLogger(advanos.server.GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
+                        Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
                     }
                     return false;
                 })
                 // Get only the amount
-                .take(amount)
+                .take(1)
                 .subscribeOn(Schedulers.newThread())
                 // And that number should update
 
                 .subscribe(fileServer -> {
                     try (Socket dest = fileServer.getSocket();
-                            InputStream inputStream = file.getInputStream()) {
+                    InputStream inputStream = file.getInputStream()) {
 
                         Protocol.write(dest, Protocol.UPLOAD);
 
@@ -205,7 +205,7 @@ public class GatewayServer implements Serializable {
                     } catch (ConnectException e) {
 
                     } catch (IOException ex) {
-                        Logger.getLogger(advanos.server.GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
+                        Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
                     }
 
                 });
@@ -273,29 +273,32 @@ public class GatewayServer implements Serializable {
      * @return IP address and port of the file server
      */
     public String registerServer() {
+        System.out.println("Registering server");
         FacesContext fc = FacesContext.getCurrentInstance();
         ExternalContext ec = fc.getExternalContext();
         Map<String, String> parameter = ec.getRequestParameterMap();
-        ServerInfo server = new ServerInfo(parameter.get("ip"), Integer.parseInt(parameter.get("port")));
+        FileServerInfo server = new FileServerInfo(parameter.get("ip"), Integer.parseInt(parameter.get("port")));
         servers.add(server);
-
-        /*Retrieve file list from server*/
         new Thread(() -> {
-            try (Socket connection = server.getSocket();
-                    OutputStream out = connection.getOutputStream()) {
-                out.write(Protocol.FILE_LIST);
-                out.flush();
-                try (ObjectInputStream ois = new ObjectInputStream(connection.getInputStream())) {
-                    Set<String> fileNames = (Set<String>) ois.readObject();
-                    files.addAll(fileNames);
-                    System.out.println("Retrieved files from " + server + " are " + fileNames);
-                }
-            } catch (SocketException e) {
-                System.out.println("Cannot get file list from " + server);
-            } catch (ClassNotFoundException | IOException ex) {
-                Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
-            }
+            registerServer(server);
         }).start();
+
         return server.toString();
+    }
+
+    private void registerServer(FileServerInfo server) {
+        /*Retrieve file list from server*/
+
+        System.out.println("Gateway found a server: " + server);
+        try (Socket connection = server.getSocket()) {
+            Protocol.write(connection, Protocol.FILE_LIST);
+            Set<String> fileNames = Protocol.readFileList(connection);
+            files.addAll(fileNames);
+            System.out.println("Retrieved files from " + server + " are " + fileNames);
+        } catch (SocketException e) {
+            System.out.println("Cannot get file list from " + server);
+        } catch (IOException ex) {
+            Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
+        }
     }
 }

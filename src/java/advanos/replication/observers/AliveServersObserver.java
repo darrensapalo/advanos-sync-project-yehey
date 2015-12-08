@@ -6,7 +6,6 @@
 package advanos.replication.observers;
 
 import advanos.Protocol;
-import advanos.gateway.ServerInfo;
 import advanos.server.FileServerInfo;
 import java.io.IOException;
 import java.net.ConnectException;
@@ -22,7 +21,7 @@ import rx.Observable;
  */
 public class AliveServersObserver {
 
-    public static Observable<ServerInfo> create(Set<ServerInfo> infos) {
+    public static Observable<FileServerInfo> create(Set<FileServerInfo> infos) {
         return Observable.from(infos)
                 // Get all the alive servers
                 .filter(c -> {
