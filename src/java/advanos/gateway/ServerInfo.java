@@ -1,4 +1,4 @@
-package advanos.server;
+package advanos.gateway;
 
 import java.io.IOException;
 import java.net.Socket;
@@ -34,7 +34,18 @@ public class ServerInfo {
         return false;
     }
 
+    /**
+     * Generates a socket from this server.
+     *
+     * @return the socket that can be used for connection
+     * @throws IOException if there are errors on generating a socket
+     */
     public Socket getSocket() throws IOException {
         return new Socket(ipAddress, port);
+    }
+
+    @Override
+    public String toString() {
+        return ipAddress + ':' + port;
     }
 }

@@ -79,28 +79,6 @@ public class Protocol {
     }
 
     /**
-     * Initially, this call reads the filename of the file to be received.
-     *
-     * Once it has the filename, it begins reading the bytes sent as a file and
-     * overwrites the data received.
-     *
-     * @param inputStream The input stream that receiving the data
-     * @param information the information describing the file server
-     */
-    public static void uploadFile(InputStream inputStream, Path directory) throws IOException {
-        try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream))) {
-            String fileName = bufferedReader.readLine();
-            Files.copy(inputStream, directory.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
-
-            /*Establish a URL connection to the gateway to notify that the file was uploded*/
-            URL gateway = new URL(URLEncoder.encode("http://localhost:8080/advanos-sync-project-yehey/faces/uploadingfinish.xhtml?file=" + fileName, "UTF-8"));
-            try (InputStream connect = gateway.openStream()) {
-                
-            }
-        }
-    }
-
-    /**
      * This function immediately receives the file data as bytes from the input
      * stream and saves it in the directory file path specified.
      *
@@ -188,17 +166,22 @@ public class Protocol {
      * @param dest The destination socket
      * @param file The file to be sent
      */
-    public static void sendFileBytes(Socket dest, Path file) {
+    public static int sendFileBytes(Socket dest, Path file) {
         try (InputStream fileSelected = Files.newInputStream(file)){
             OutputStream os = dest.getOutputStream();
             byte[] buffer = new byte[1024];
-            while (fileSelected.read(buffer) > -1) {
-                os.write(buffer);
+            int total = 0;
+            int len;
+            while ((len = fileSelected.read(buffer)) > -1) {
+                os.write(buffer, 0, len);
+                total += len;
             }
             os.flush();
+            return total;
         } catch (IOException ex) {
             Logger.getLogger(Protocol.class.getName()).log(Level.SEVERE, null, ex);
         }
+        return -1;
     }
 
     /**

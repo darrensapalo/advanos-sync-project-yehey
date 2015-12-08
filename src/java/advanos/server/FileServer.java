@@ -1,15 +1,23 @@
 package advanos.server;
 
+import advanos.gateway.GatewayServer;
 import advanos.Protocol;
+import java.io.BufferedReader;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.ObjectOutputStream;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -43,7 +51,23 @@ public final class FileServer implements Runnable {
     @Override
     public void run() {
         try {
+
+            /*Create a new server socket for this file server*/
             server = new ServerSocket(port);
+            String ipAddress = InetAddress.getLocalHost().getHostAddress();
+            String localPort = Integer.toString(server.getLocalPort());
+            String addressPort = ipAddress + ":" + localPort;
+            System.out.println("File server " + addressPort + " started.");
+
+            /*Inform the gateway that this server is alive*/
+            URL gateway = new URL("http://localhost:8080/advanos-sync-project-yehey/faces/register.xhtml?ip=" + ipAddress + "&port=" + localPort);
+            try (InputStream is = gateway.openStream()) {
+                System.out.println("File server " + addressPort + " connected to the gateway.");
+            } catch (FileNotFoundException e) {
+                System.out.println("File server " + addressPort + " cannot connect to the gateway.");
+            }
+
+            /*File server operations*/
             while (true) {
                 try (Socket dest = server.accept();
                         InputStream inputStream = dest.getInputStream()) {
@@ -60,11 +84,23 @@ public final class FileServer implements Runnable {
                             break;
 
                         case Protocol.UPLOAD:
-                            Protocol.uploadFile(inputStream, information.getDirectory());
+                            try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream))) {
+                                String fileName = bufferedReader.readLine();
+                                long size = Files.copy(inputStream, directory.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
+                                System.out.println("File " + fileName + " was uploaded to " + addressPort + " with the size of " + size);
 
+                                /*Establish a URL connection to the gateway to notify that the file was uploded*/
+                                gateway = new URL("http://localhost:8080/advanos-sync-project-yehey/faces/uploadingfinish.xhtml?file=" + fileName);
+                                try (InputStream connect = gateway.openStream()) {
+                                    System.out.println("Informed gateway about uploaded file.");
+                                } catch (FileNotFoundException e) {
+                                    System.out.println("Gateway is offline.");
+                                }
+                            }
                             break;
                         case Protocol.DOWNLOAD:
                             Protocol.sendRequestedFile(dest, information);
+                            System.out.println(" was downloaded from " + addressPort);
                             break;
 
                         /*Sends all files of this server starting with a set of file names*/
@@ -97,7 +133,7 @@ public final class FileServer implements Runnable {
             //Socket is closed
             System.out.println(ex + " " + port);
         } catch (IOException ex) {
-            Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(FileServer.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
 
@@ -108,6 +144,7 @@ public final class FileServer implements Runnable {
      */
     public void stop() throws IOException {
         server.close();
+        System.out.println("File server " + InetAddress.getLocalHost().getHostAddress() + ":" + port + " was closed");
     }
 
     /**
@@ -137,15 +174,6 @@ public final class FileServer implements Runnable {
 
     public FileServerInfo getInformation() {
         return information;
-    }
-
-    public Socket connect() throws IOException {
-        System.out.println("Creating a new connection to file server " + port);
-        return connect(information.getPort());
-    }
-
-    public static Socket connect(int port) throws IOException {
-        return new Socket("localhost", port);
     }
 
     public int getPort() {

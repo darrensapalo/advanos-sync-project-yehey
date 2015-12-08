@@ -1,4 +1,4 @@
-package advanos.server;
+package advanos.gateway;
 
 import advanos.Protocol;
 import java.io.IOException;
@@ -57,14 +57,8 @@ public class GatewayServer implements Serializable {
 
         /*Receive file list from servers*/
         servers.forEach(server -> {
-            try (Socket connection = server.getSocket();
-                    OutputStream out = connection.getOutputStream()) {
-                out.write(Protocol.FILE_LIST);
-                out.flush();
-                try (ObjectInputStream ois = new ObjectInputStream(connection.getInputStream())) {
-                    Set<String> fileNames = (Set<String>) ois.readObject();
-                    files.addAll(fileNames);
-                }
+            try {
+                getFileList(server);
             } catch (ClassNotFoundException | IOException ex) {
                 Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
             }
@@ -78,6 +72,7 @@ public class GatewayServer implements Serializable {
 
     /**
      * Downloads a file given its file name.
+     *
      * @param fileName The name of a file to be downloaded
      */
     public void download(String fileName) {
@@ -136,7 +131,6 @@ public class GatewayServer implements Serializable {
      */
     public void upload() {
         String filename = file.getSubmittedFileName();
-        uploadingList.add(filename);
         Integer amount = Protocol.computeReplicationAmount(Protocol.NUMBER_OF_SERVERS);
 
         // From a list of servers
@@ -166,6 +160,7 @@ public class GatewayServer implements Serializable {
 
                         Protocol.write(dest, filename);
 
+                        uploadingList.add(filename);
                         Protocol.transferBytes(inputStream, dest.getOutputStream());
 
                         files.add(filename);
@@ -176,12 +171,12 @@ public class GatewayServer implements Serializable {
                     }
 
                 });
-        uploadingList.remove(filename);
     }
 
     /**
      * Gets the file which is selected for upload. Used in the web page.
-     * @return 
+     *
+     * @return
      */
     public Part getFile() {
         return file;
@@ -189,6 +184,7 @@ public class GatewayServer implements Serializable {
 
     /**
      * Gets all files that can be downloaded.
+     *
      * @return All files that can be downloaded
      */
     public Set<String> getFiles() {
@@ -197,16 +193,16 @@ public class GatewayServer implements Serializable {
 
     /**
      * Sets the file to be uploaded. Used in the web page.
-     * @param file 
+     *
+     * @param file
      */
     public void setFile(Part file) {
         this.file = file;
     }
 
     /**
-     * Notifies this gate way that a file has already been uploaded.
-     * It removes the specified file on the request parameter from the
-     * upload file list.
+     * Notifies this gate way that a file has already been uploaded. It removes
+     * the specified file on the request parameter from the upload file list.
      */
     public void uploadingFinished() {
         FacesContext fc = FacesContext.getCurrentInstance();
@@ -217,11 +213,43 @@ public class GatewayServer implements Serializable {
     }
 
     /**
-     * Registers a file server to this gateway
+     * Registers the file server in this gateway given parameters ip and port
+     *
+     * @return IP address and port of the file server
      */
-    public void registerServer() {
+    public String registerServer() {
         FacesContext fc = FacesContext.getCurrentInstance();
         ExternalContext ec = fc.getExternalContext();
-        servers.add(new ServerInfo(ec.getRequestServerName(), ec.getRequestServerPort()));
+        Map<String, String> parameter = ec.getRequestParameterMap();
+        ServerInfo server = new ServerInfo(parameter.get("ip"), Integer.parseInt(parameter.get("port")));
+        servers.add(server);
+        try {
+            getFileList(server);
+        } catch (ClassNotFoundException | IOException ex) {
+            Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        return server.toString();
+    }
+
+    /**
+     * Adds all file names from a server to the file list.
+     *
+     * @param server the source of file names
+     * @throws ClassNotFoundException object does not match with {@code Set<Strings>}
+     * @throws IOException connection error with the server
+     */
+    private void getFileList(ServerInfo server) throws ClassNotFoundException, IOException {
+        try (Socket connection = server.getSocket();
+                OutputStream out = connection.getOutputStream()) {
+            out.write(Protocol.FILE_LIST);
+            out.flush();
+            try (ObjectInputStream ois = new ObjectInputStream(connection.getInputStream())) {
+                Set<String> fileNames = (Set<String>) ois.readObject();
+                files.addAll(fileNames);
+                System.out.println("Retrieved files from " + server + " are " + fileNames);
+            }
+        } catch (SocketException e) {
+            System.out.println("Cannot get file list from " + server);
+        }
     }
 }
