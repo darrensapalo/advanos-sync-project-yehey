@@ -44,7 +44,7 @@ public class GatewayServer implements Serializable {
      */
     @PostConstruct
     public void init() {
-        files = new HashSet<>();
+        files = Collections.synchronizedSet(new HashSet<>());
 
         /*Initialize file servers to be connected*/
         servers = new HashSet<>();
@@ -54,15 +54,6 @@ public class GatewayServer implements Serializable {
         servers.add(new ServerInfo("localhost", 1102));
         servers.add(new ServerInfo("localhost", 1103));
         servers.add(new ServerInfo("localhost", 1104));
-
-        /*Receive file list from servers*/
-        servers.forEach(server -> {
-            try {
-                getFileList(server);
-            } catch (ClassNotFoundException | IOException ex) {
-                Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        });
 
         /*Sample file upload list*/
         uploadingList = Collections.synchronizedList(new ArrayList());
@@ -132,6 +123,7 @@ public class GatewayServer implements Serializable {
     public void upload() {
         String filename = file.getSubmittedFileName();
         Integer amount = Protocol.computeReplicationAmount(Protocol.NUMBER_OF_SERVERS);
+        System.out.println("Uploading " + filename + " " + file.getSize() + "...");
 
         // From a list of servers
         Observable.from(servers)
@@ -161,7 +153,8 @@ public class GatewayServer implements Serializable {
                         Protocol.write(dest, filename);
 
                         uploadingList.add(filename);
-                        Protocol.transferBytes(inputStream, dest.getOutputStream());
+                        int size = Protocol.transferBytes(inputStream, dest.getOutputStream());
+                        System.out.println(filename + " " + size + " sent to " + fileServer);
 
                         files.add(filename);
                     } catch (SocketException e) {
@@ -223,33 +216,24 @@ public class GatewayServer implements Serializable {
         Map<String, String> parameter = ec.getRequestParameterMap();
         ServerInfo server = new ServerInfo(parameter.get("ip"), Integer.parseInt(parameter.get("port")));
         servers.add(server);
-        try {
-            getFileList(server);
-        } catch (ClassNotFoundException | IOException ex) {
-            Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
-        }
-        return server.toString();
-    }
 
-    /**
-     * Adds all file names from a server to the file list.
-     *
-     * @param server the source of file names
-     * @throws ClassNotFoundException object does not match with {@code Set<Strings>}
-     * @throws IOException connection error with the server
-     */
-    private void getFileList(ServerInfo server) throws ClassNotFoundException, IOException {
-        try (Socket connection = server.getSocket();
-                OutputStream out = connection.getOutputStream()) {
-            out.write(Protocol.FILE_LIST);
-            out.flush();
-            try (ObjectInputStream ois = new ObjectInputStream(connection.getInputStream())) {
-                Set<String> fileNames = (Set<String>) ois.readObject();
-                files.addAll(fileNames);
-                System.out.println("Retrieved files from " + server + " are " + fileNames);
+        /*Retrieve file list from server*/
+        new Thread(() -> {
+            try (Socket connection = server.getSocket();
+                    OutputStream out = connection.getOutputStream()) {
+                out.write(Protocol.FILE_LIST);
+                out.flush();
+                try (ObjectInputStream ois = new ObjectInputStream(connection.getInputStream())) {
+                    Set<String> fileNames = (Set<String>) ois.readObject();
+                    files.addAll(fileNames);
+                    System.out.println("Retrieved files from " + server + " are " + fileNames);
+                }
+            } catch (SocketException e) {
+                System.out.println("Cannot get file list from " + server);
+            } catch (ClassNotFoundException | IOException ex) {
+                Logger.getLogger(GatewayServer.class.getName()).log(Level.SEVERE, null, ex);
             }
-        } catch (SocketException e) {
-            System.out.println("Cannot get file list from " + server);
-        }
+        }).start();
+        return server.toString();
     }
 }

@@ -71,10 +71,7 @@ public final class FileServer implements Runnable {
             while (true) {
                 try (Socket dest = server.accept();
                         InputStream inputStream = dest.getInputStream()) {
-                    int input = inputStream.read();
-                    System.out.println("Received a connection with request " + input);
-
-                    switch (input) {
+                    switch (inputStream.read()) {
                         case Protocol.SERVER_INFO:
                             Protocol.sendObject(dest, information);
                             break;
@@ -87,12 +84,12 @@ public final class FileServer implements Runnable {
                             try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream))) {
                                 String fileName = bufferedReader.readLine();
                                 long size = Files.copy(inputStream, directory.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
-                                System.out.println("File " + fileName + " was uploaded to " + addressPort + " with the size of " + size);
+                                System.out.println(fileName + " " + size + " was uploaded to " + addressPort);
 
                                 /*Establish a URL connection to the gateway to notify that the file was uploded*/
                                 gateway = new URL("http://localhost:8080/advanos-sync-project-yehey/faces/uploadingfinish.xhtml?file=" + fileName);
                                 try (InputStream connect = gateway.openStream()) {
-                                    System.out.println("Informed gateway about uploaded file.");
+                                    System.out.println(server + "Informed gateway about uploaded file.");
                                 } catch (FileNotFoundException e) {
                                     System.out.println("Gateway is offline.");
                                 }

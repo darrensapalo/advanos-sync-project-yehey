@@ -54,12 +54,16 @@ public class Protocol {
      * @param outputStream stream to write data to
      * @throws IOException
      */
-    public static void transferBytes(InputStream inputStream, OutputStream outputStream) throws IOException {
+    public static int transferBytes(InputStream inputStream, OutputStream outputStream) throws IOException {
+        int len = 0;
+        int total = 0;
         byte[] buffer = new byte[1024];
-        while (inputStream.read(buffer) > -1) {
-            outputStream.write(buffer);
+        while ((len = inputStream.read(buffer)) > 0) {
+            outputStream.write(buffer, 0, len);
+            total += len;
         }
         outputStream.flush();
+        return total;
     }
 
     /**

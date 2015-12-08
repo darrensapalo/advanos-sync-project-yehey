@@ -13,7 +13,7 @@ import javax.faces.bean.ManagedBean;
  *
  * @author CSC611M G01
  */
-@ManagedBean(eager = true)
+@ManagedBean(eager = false)
 @ApplicationScoped
 public class ServerController {
 
